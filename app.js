@@ -53,7 +53,82 @@ const stripMdHtml = (s) => (s || "")
   .replace(/\s+/g, " ").trim();
 
 const words = (s) => { const t = stripMdHtml(s); return t ? t.split(/\s+/) : []; };
-const sentencesOf = (s) => (stripMdHtml(s).match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || []).map(x => x.trim()).filter(Boolean);
+// A period only ends a sentence when it isn't part of a filename, domain,
+// abbreviation, initial or decimal. "Save it as .ics" and "see example.com"
+// must stay one sentence, or word counts, Flesch and the fragment check all
+// read garbage.
+// Titles and true abbreviations only. Day/month names are excluded on purpose:
+// "The cat sat." must still split (matching "sat" to Saturday swallowed it).
+const ABBREV = new Set(("mr mrs ms dr prof sr jr st rev hon gen col sgt capt lt cmdr gov sen rep pres dept est inc ltd co corp vs etc eg ie cf al ca approx univ mt ft ave blvd rd no vol pp ed eds fig").split(" "));
+// "e.g." / "i.e." — the trailing period is part of the abbreviation.
+const ABBREV_DOTTED = new Set(("e.g i.e a.m p.m u.s u.k ph.d etc cf viz al et seq".split(" ")));
+// Common file extensions, so "report.pdf." still splits only at the real stop.
+const FILE_EXT = new Set(("ics exe dll txt pdf jpg jpeg png gif bmp svg webp doc docx xls xlsx csv ppt pptx zip rar gz tar bz2 xz 7z rar iso apk msi dmg deb rpm bin sh bash py rb rs go js ts jsx tsx json xml yaml yml toml md markdown html htm css scss sql db sqlite log tmp bak cfg ini env lock conf reg dat com net org edu gov io ai co uk de fr jp cn us info biz me tv cc app dev cloud ai".split(" ")));
+const sentenceRanges = (t) => {
+  const out = [];
+  const n = t.length;
+  let start = 0;
+  for (let i = 0; i < n; i++) {
+    const c = t[i];
+    if (c !== "." && c !== "!" && c !== "?" && c !== "…") continue;
+    // Repeated terminators ("?!", "...") belong to the same sentence.
+    if (c === "." && t[i + 1] === ".") continue;
+    // What follows, ignoring closing quotes/brackets: a new sentence starts
+    // with a capital, a digit, an opening quote or a list marker — or nothing.
+    let j = i + 1;
+    while (j < n && /["'’”)\]]/.test(t[j])) j++;
+    const after = t.slice(j);
+    const afterTrim = after.replace(/^\s+/, "");
+    const isEnd = !after.trim();
+    // No space at all before the next word → mid-token, not a terminator.
+    // ("here.Next" is a missing space the spacing check flags, not a break.)
+    if (!isEnd && !/^\s/.test(after)) continue;
+    // A new sentence starts with a capital, digit, opening quote or list marker.
+    if (!isEnd && !/^[A-Z0-9“‘(\[•\-–—*#]/.test(afterTrim)) continue;
+    // Guard the mid-token period cases.
+    if (c === ".") {
+      const before = t.slice(start, i);
+      const prevCh = before.slice(-1);
+      const nextWord = (afterTrim.match(/^[^\s"'’”)\]]*/) || [""])[0];
+      // decimal: 5.5, v1.2, 3.14
+      if (/\d/.test(prevCh) && /^\d/.test(nextWord)) continue;
+      // filename / domain / extension: report.pdf, .ics, example.com
+      const prevWord = (before.match(/[A-Za-z0-9_.+-]*$/) || [""])[0];
+      if (/^[A-Za-z0-9_.+-]*[A-Za-z0-9_-]$/.test(prevWord) && /^\.?[A-Za-z0-9]{1,12}$/.test(nextWord)) {
+        const bare = nextWord.replace(/^\./, "").toLowerCase();
+        const stem = prevWord.split(".").pop().toLowerCase();
+        const extLike = FILE_EXT.has(bare) || nextWord.startsWith(".");
+        const isDomain = bare.length >= 2 && !/^[A-Z]/.test(nextWord[0] || "x") && /^[a-z]{2,6}$/.test(bare);
+        if (extLike || isDomain || stem === bare) continue;
+      }
+      // Single initials: "J. Smith", "J. R. Smith" — capitals before the period,
+      // then a capitalised surname (or another initial). Ambiguous with
+      // "…sponsored by B. Then…", which is the rarer shape.
+      if (/^[A-Z]$/.test(prevWord) && /(?:^|[\s(])(?:[A-Z]\.\s*){0,2}[A-Z]$/.test(before)) {
+        if (/^[A-Z][a-z]/.test(nextWord)) continue;
+        // "J. R." — the next token is itself an initial, so this period is internal.
+        if (/^[A-Z]$/.test(nextWord) && afterTrim.slice(nextWord.length, nextWord.length + 1) === ".") continue;
+      }
+      // known abbreviation: "Dr.", "vs.", "e.g.", "i.e."
+      if (ABBREV.has(prevWord.toLowerCase())) continue;
+      if (ABBREV_DOTTED.has((t.slice(Math.max(start, i - 6), i + 1) || "").toLowerCase())) continue;
+      // version: "v1.2" / "v. 1.2"
+      if (/^v$/i.test(prevWord) && /^\d/.test(nextWord)) continue;
+      // ellipsis in the middle of a sentence
+      if (/^[.]/.test(nextWord)) continue;
+    }
+    const seg = t.slice(start, i + 1);
+    if (seg.trim()) out.push([start, i + 1]);
+    start = i + 1;
+    i = j - 1;
+  }
+  if (t.slice(start).trim()) out.push([start, n]);
+  return out;
+};
+const sentencesOf = (s) => {
+  const t = stripMdHtml(s);
+  return sentenceRanges(t).map(([a, b]) => t.slice(a, b).trim()).filter(Boolean);
+};
 const countSyllables = (w) => {
   w = w.toLowerCase().replace(/[^a-z]/g, "");
   if (!w) return 0;
@@ -116,20 +191,34 @@ const passiveShare = (text) => {
   if (!ss.length) return 0;
   return ss.filter(isPassive).length / ss.length;
 };
-// Passive voice: auxiliary + past participle. The participle list covers the
-// common irregulars the -ed/-en pattern misses (built, written, told, found…),
-// plus the "-en" endings (-broken, -chosen, -spoken). The leading boundary
-// avoids matching the noun in "is the reason" — that pair is auxiliary+noun.
-const PASSIVE_RE = /\b(?:am|is|are|was|were|be|been|being|get|got|gets)\b\s+(?:not\s+|also\s+|always\s+|often\s+|already\s+|being\s+)?(?:\w+ed\b|\w+en\b|built|written|told|made|done|taken|given|shown|found|known|thought|said|seen|held|kept|left|lost|paid|met|run|set|put|read|led|brought|taught|caught|chosen|drawn|drove|spoken|broken|worn|torn|felt|kept|won|heard|meant|sent|spent|born|become|begun|risen|sunk|shaken|stolen|struck|sworn|swum|thrown|woken|woven|withdrawn|laid|lain|sung|swum|shrunk|spun|stuck|struck|clung|crept|dealt|drunk|flung|flown|fled|grown|risen|shot|shone|slid|spread|swung|thrust|woven)\b/i;
-const isPassive = (s) => {
-  if (!PASSIVE_RE.test(s)) return false;
-  // Reject "is/are/was/were + singular noun" ("is the reason", "are analysts")
-  // so a copula before a noun isn't reported as passive voice.
-  const m = s.match(PASSIVE_RE);
-  const after = (s.slice(m.index + m[0].length).match(/^([A-Za-z']+)/) || [])[1] || "";
-  if (/^(s)$/.test(after) && !/\b(used|supposed|based|concerned|related|referred|preferred|known|seen)$/i.test(m[0].split(/\s+/).pop())) return false;
-  return true;
-};
+// Passive voice = auxiliary + past participle. The blunt /\w+ed|\w+en/ test
+// misfired on "is often", "is even brighter", "is red", "is open", so this
+// matches auxiliary + one word, then judges that word as a participle.
+const AUX_WORD_RE = /\b(?:am|is|are|was|were|be|been|being|get|got|gets)\s+(?:(?:not|also|always|often|already|being|generally|typically|usually|still|even|widely|commonly|largely)\s+)?([A-Za-z][A-Za-z'-]*)/gi;
+// Irregular past participles that don't end in -ed.
+const IRREG_PART = new Set(("been beaten become begun bitten blown born borne bought brought broken burnt burst caught chosen clung come cost crept dealt done drawn driven drunk eaten fallen felt fought forgotten found frozen given gone grown heard held hidden hung kept known lain laid led left lent lost made meant met mistaken mown overcome overrun paid proven put read ridden risen run said seen sold sent set shaken shaven shown shrunk shrunken shut singular sunken sung sunk slain slid slung slit sown sped spent spun spread sprung striven stood stolen stuck struck striven sworn swum swollen taken taught torn told thought thrown trodden understood undertaken upheld upset woken withdrawn woven won worn written").split(" "));
+// -en/-ed words that only look like participles: comparatives, adjectives,
+// plain nouns, and adverbs ("is often", "is even brighter").
+const NOT_PARTICIPLE = new Set(("often even then when open red bed wed sled naked sacred kindred wicked hatred hundred aged need feed seed breed creed deed greed heed reed speed steed weed tired mixed round second third husband present instant silent violent constant relevant excellent important different significant similar").split(" "));
+function isPassive(s) {
+  if (!s) return false;
+  AUX_WORD_RE.lastIndex = 0;
+  let m;
+  while ((m = AUX_WORD_RE.exec(s)) !== null) {
+    const w = m[1], lw = w.toLowerCase();
+    if (NOT_PARTICIPLE.has(lw)) continue;              // "is often", "is open"
+    if (/(?:er|est)$/.test(lw) && !/^(other|another|however|whether|either|neither|over|under|user|users|power|paper|number|order|water|matter|center|centre|offer|cover|after|before|master|faster|slower|larger|smaller|bigger|higher|lower|greater|older|younger|stronger|weaker|richer|safer|faster)$/.test(lw)) continue;
+    if (IRREG_PART.has(lw)) return true;               // was written, is taken
+    if (/ed$/.test(lw)) {
+      // "is used to"/"is based on" are stative idioms, not passive voice.
+      const nxt = (s.slice(m.index + m[0].length).match(/^\s+(\w+)/) || [])[1] || "";
+      if (/^(to|on|in|at|for|from|by|with|about|into|over|than|as)$/i.test(nxt) && /^(used|based|related|concerned|referred|preferred|supposed|qualified|known|inclined|attached|committed|dedicated|limited|restricted|supposed)$/.test(lw)) continue;
+      return true;
+    }
+    if (/en$/.test(lw) && IRREG_PART.has(lw)) return true;
+  }
+  return false;
+}
 // Keyphrase matching is word-boundary aware: a plain substring count made
 // "art" match inside "part"/"article" and "ai" match inside "said". The last
 // word also takes an optional plural so "residency" still matches the
@@ -220,7 +309,7 @@ if (kw) {
     // A snippet that never gives a reason to click converts poorly.
     const cta = CTA_RE.test(summary);
     if (cta) add("summary-cta", "pass", "Summary has a call to action", "Tells the reader what happens next — good for click-through.", 1);
-    else add("summary-cta", "warn", "Summary lacks a call to action", `No reason to click in there. Meta descriptions convert better with one: ${CTA_SAMPLES[0]} — or “${CTA_SAMPLES[1]}”.`, 1);
+    else add("summary-cta", "warn", "Summary lacks a reason to click", "Nothing in there earns the click — a specific, concrete promise does (a number, a stake, a surprising result). Generic framing like “here’s what to know” spends the character budget without saying anything.", 1);
     const sem = (summary.match(EMOJI_RE) || []).length;
     if (sem) add("summary-emoji", "warn", `Summary: ${sem} emoji`, "Emoji can truncate mid-sequence in search results and rarely helps a tech audience.", 0.5);
   }
@@ -441,16 +530,22 @@ function questionFromBody(body, i) {
 }
 
 /* ---------- Meters / rendering / score ---------- */
+// Character fields (title/summary/excerpt) have a real ceiling — search cuts
+// them off. The article body does NOT: a long piece is never "truncated", it's
+// just long, and the depth check already rewards it. Reusing the truncation
+// wording for word counts told writers to cut good articles, so the body gets
+// its own open-ended messaging.
 function updateMeter(field, value, min, good, hardMax, emptyMsg) {
   const bar = $("bar-" + field), msg = $("msg-" + field), count = $("c-" + field);
   const unit = field === "body" ? "w" : "ch";
   count.textContent = value + " " + unit;
   const pct = hardMax ? Math.min(100, Math.round(value / hardMax * 100)) : 0;
   bar.style.width = pct + "%";
-  bar.style.background = !value ? "#2c3d52" : value < min ? "var(--warn)" : value <= good ? "var(--accent)" : value <= hardMax ? "var(--warn)" : "var(--fail)";
+  bar.style.background = !value ? "#2c3d52" : value < min ? "var(--warn)" : value <= good ? "var(--accent)" : field === "body" ? "var(--accent)" : value <= hardMax ? "var(--warn)" : "var(--fail)";
   if (emptyMsg) { msg.textContent = emptyMsg; msg.className = "field-msg"; }
   else if (value < min) { msg.textContent = `${min - value} ${unit} short of the ${min} minimum.`; msg.className = "field-msg warn"; }
   else if (value <= good) { msg.textContent = "In the ideal range."; msg.className = "field-msg ok"; }
+  else if (field === "body") { msg.textContent = "Depth is fine — more words, not less."; msg.className = "field-msg ok"; }
   else { msg.textContent = `Over by ${value - good} ${unit} — trim to avoid truncation.`; msg.className = "field-msg warn"; }
   if (field === "keyphrase") count.textContent = "";
 }
@@ -502,8 +597,10 @@ function smartTrim(s, max) {
 const rawSentences = (t) => {
   const out = [];
   for (const block of (t || "").split(/\n\s*\n/)) {
-    for (const m of (block.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [])) {
-      const s = m.trim();
+    // Same terminator logic as sentencesOf, so ".ics" and "example.com" never
+    // split here either.
+    for (const [a, b] of sentenceRanges(block)) {
+      const s = block.slice(a, b).trim();
       if (s && words(s).length > 1) out.push(s);
     }
   }
