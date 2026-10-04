@@ -270,12 +270,16 @@ function updateMeter(field, value, min, good, hardMax, emptyMsg) {
 }
 
 function render(checks, vals) {
-  const scored = checks.filter(c => c.status !== "skip" && c.weight > 0);
+  // Done marks count as manual passes (badged, reversible) — for steps the
+  // parser can't verify, e.g. a link format it doesn't recognize.
+  const shown = checks.map((c) => ((c.status === "warn" || c.status === "fail") && doneChecks[c.id])
+    ? { ...c, status: "pass", manual: true, detail: c.detail + " (Marked done by you — not auto-verified.)" } : c);
+  const scored = shown.filter(c => c.status !== "skip" && c.weight > 0);
   const pts = { pass: 1, warn: 0.45, fail: 0 };
   const got = scored.reduce((a, c) => a + (pts[c.status] ?? 0) * c.weight, 0);
   const max = scored.reduce((a, c) => a + c.weight, 0) || 1;
   const score = max === 1 && scored.length === 0 ? null : Math.round(got / max * 100);
-  lastReport = { score, checks, vals, rulesVersion: RULES.version, rulesUpdated: RULES.updated, at: new Date().toISOString() };
+  lastReport = { score, checks: shown, vals, rulesVersion: RULES.version, rulesUpdated: RULES.updated, at: new Date().toISOString() };
 
   els.scoreNum.textContent = score === null ? "–" : score;
   els.dial.style.setProperty("--p", score ?? 0);
@@ -283,10 +287,10 @@ function render(checks, vals) {
   els.verdict.textContent = score === null ? "Start typing…" :
     score >= 80 ? "Strong — ready to publish" : score >= 55 ? "Close — fix the warnings" : "Needs work — see suggestions";
   els.scoreHint.textContent = score === null ? "Your overall SEO readiness appears here. Every check below updates as you type."
-    : `${scored.filter(c => c.status === "pass").length}/${scored.length} checks passing.`;
+    : `${shown.filter(c => c.status === "pass").length}/${scored.length} checks passing${shown.some((c) => c.manual) ? " (incl. manual)" : ""}.`;
 
-  els.checks.innerHTML = checks.map(c =>
-    `<li><b><span class="badge ${c.status}">${c.status}</span>${esc(c.title)}</b><p>${esc(c.detail)}</p></li>`).join("")
+  els.checks.innerHTML = shown.map(c =>
+    `<li><b><span class="badge ${c.manual ? "manual" : c.status}">${c.manual ? "done ✓" : c.status}</span>${esc(c.title)}</b><p>${esc(c.detail)}</p></li>`).join("")
     || `<li><p class="hint">No checks yet.</p></li>`;
 
   renderSuggestions(vals);
@@ -473,13 +477,15 @@ function suggestTitle(title, kw) {
 
 function renderSuggestions({ kw, title, summary, excerpt, body }) {
   const out = [];
-  const push = (h, why, text, fix, copy) => { if (text) out.push({ h, why, text, fix, copy: copy !== false }); };
+  // satisfies: the check-id this suggestion resolves — lets a Done mark count
+  // that check as manually passed in scoring (badged, reversible).
+  const push = (h, why, text, fix, copy, satisfies) => { if (text) out.push({ h, why, text, fix, copy: copy !== false, satisfies }); };
   const R = RULES.rules;
 
   if (title.trim()) {
     const fixed = suggestTitle(title, kw);
     if (fixed !== title.trim())
-      push("Title rewrite", `Fits ${R.title.minChars}–${R.title.maxChars} chars${kw ? " with the keyphrase up front" : ""}.`, fixed);
+      push("Title rewrite", `Fits ${R.title.minChars}–${R.title.maxChars} chars${kw ? " with the keyphrase up front" : ""}.`, fixed, null, true, "title-len");
     else if (title.trim().length < R.title.minChars)
       push("Title idea", "Too short to compete — add a promise or scope.", `${title.trim()} — what you get and who it's for`.slice(0, R.title.maxChars));
   }
@@ -489,12 +495,12 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
     if (kw && !base.toLowerCase().includes(kw.toLowerCase()) && kw) s = `${kw[0].toUpperCase() + kw.slice(1)} — ${s}`;
     s = smartTrim(s, R.summary.maxChars);
     if (!/[.!?……]$/.test(s) && s.length > 40) s = s.replace(/…$/, "") + ".";
-    if (s && s !== summary.trim()) push("Summary rewrite (meta description)", `~${R.summary.minChars}–${R.summary.maxChars} chars, keyphrase + benefit + reason to click.`, s);
+    if (s && s !== summary.trim()) push("Summary rewrite (meta description)", `~${R.summary.minChars}–${R.summary.maxChars} chars, keyphrase + benefit + reason to click.`, s, null, true, "summary-len");
   }
   if (excerpt.trim() && summary.trim() && stripMdHtml(excerpt).toLowerCase() === stripMdHtml(summary).toLowerCase())
-    push("Excerpt rewrite (de-duplicate)", "Don't repeat the summary — tease instead.", smartTrim("Inside: " + excerpt.trim().replace(/^inside:\s*/i, ""), R.excerpt.maxChars));
+    push("Excerpt rewrite (de-duplicate)", "Don't repeat the summary — tease instead.", smartTrim("Inside: " + excerpt.trim().replace(/^inside:\s*/i, ""), R.excerpt.maxChars), null, true, "excerpt-len");
   else if (excerpt.trim() && excerpt.trim().length > R.excerpt.maxChars)
-    push("Excerpt trim", "Keep the hook inside the card cutoff.", smartTrim(excerpt.trim(), R.excerpt.maxChars));
+    push("Excerpt trim", "Keep the hook inside the card cutoff.", smartTrim(excerpt.trim(), R.excerpt.maxChars), null, true, "excerpt-len");
 
   const bw = words(body).length;
   if (bw > 0) {
@@ -507,49 +513,62 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
       if (spots.length) {
         spots.forEach((sp, i) => push(
           `Suggested heading ${i + 1} (${tag})`,
-          `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — ${sp.reason}, so “${sp.title}” fits. Tap Insert${sp.placeholder ? " (then replace the placeholder with your own words)" : ", then rewrite it in your own words"}${kw ? " (ideally with the keyphrase)" : ""}.`,
+          `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — ${sp.reason}, so “${sp.title}” fits. ${sp.draft ? "Working title — rewrite it in your own words" : "Ready to use as-is; tap Insert"}.`,
           hashes + " " + sp.title,
-          { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" }
+          { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" },
+          true, "body-h"
         ));
       } else {
         push("Structure fix", "Add scannable sections — each heading answers one question. (No clear paragraphs detected, so place these by hand.)",
-          [hashes + " What it is", hashes + " Why it matters", hashes + " How to do it", hashes + " Mistakes to avoid", hashes + " FAQ"].join("\n"));
+          [hashes + " What it is", hashes + " Why it matters", hashes + " How to do it", hashes + " Mistakes to avoid", hashes + " FAQ"].join("\n"), null, true, "body-h");
       }
     }
     if (kw && !heads.some(h => h.text.toLowerCase().includes(kw.toLowerCase())))
-      push("Heading idea", "Give crawlers one keyword-bearing section heading.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`);
+      push("Heading idea", "Give crawlers one keyword-bearing section heading.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`, null, true, "body-hkw");
     const { internal, external } = parseLinks(body);
-    if (!internal.length) push("Internal link idea", "Keeps readers + authority in your cluster.", "Link a phrase to 1–2 related posts (e.g. “see our [beginner's guide](/… )”).");
-    if (!external.length) push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.");
+    if (!internal.length) push("Internal link idea", "Keeps readers + authority in your cluster.", "Link a phrase to 1–2 related posts (e.g. “see our [beginner's guide](/… )”).", null, true, "body-il");
+    if (!external.length) push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.", null, true, "body-el");
     const longS = rawSentences(body).filter((s) => words(s).length > R.body.maxSentenceWords).slice(0, 2);
     longS.forEach((s) => {
       const fix = shortenFix(s, R.body.maxSentenceWords);
       if (fix) push(fix.kind === "split" ? "Split into two sentences" : "Shorten sentence",
         `Over ${R.body.maxSentenceWords} words — ${fix.note}.`, fix.replace,
-        { find: s, replace: fix.replace, verb: "Replace in draft" });
+        { find: s, replace: fix.replace, verb: "Replace in draft" }, true, "body-sent");
       else {
         const ws = s.split(/\s+/);
         const mid = ws.slice(Math.max(0, Math.floor(ws.length / 2) - 2), Math.floor(ws.length / 2) + 2).join(" ");
-        push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no safe automatic fix. Try breaking it near “…${mid}…”.`, s, null, false);
+        push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no safe automatic fix. Try breaking it near “…${mid}…”.`, s, null, false, "body-sent");
       }
     });
     const f = flesch(body);
     if (f !== null && f < RULES.rules.readability.fleschOkay)
-      push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.", null, false);
+      push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.", null, false, "body-read");
   }
 
-  els.suggestions.innerHTML = out.length ? out.map((s, i) =>
-    `<div class="sug"><h4>${esc(s.h)}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote>` +
+  els.suggestions.innerHTML = out.length ? out.map((s, i) => {
+    const done = s.satisfies && doneChecks[s.satisfies];
+    return `<div class="sug${done ? " is-done" : ""}"><h4>${esc(s.h)}${done ? ' <span class="badge manual">done ✓</span>' : ""}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote>` +
     (s.fix
       ? `<button class="btn small copy" data-r="${i}" type="button">${esc(s.fix.verb || "Replace in draft")}</button>`
-      : (s.copy ? `<button class="btn small copy" data-i="${i}" type="button">Copy</button>` : "")) + `</div>`).join("")
+      : (s.copy ? `<button class="btn small copy" data-i="${i}" type="button">Copy</button>` : "")) +
+    (s.satisfies ? ` <button class="btn small ghost" data-done="${i}" type="button">${done ? "Undo" : "Done"}</button>` : "") + `</div>`;
+  }).join("")
     : `<p class="hint">Suggestions will appear here once there is something to review.</p>`;
   els.suggestions.querySelectorAll("[data-i]").forEach(b => b.addEventListener("click", () => {
     navigator.clipboard.writeText(out[+b.dataset.i].text).then(() => { b.textContent = "Copied!"; setTimeout(() => b.textContent = "Copy", 1200); });
   }));
+  els.suggestions.querySelectorAll("[data-done]").forEach(b => b.addEventListener("click", () => {
+    const s = out[+b.dataset.done];
+    if (!s || !s.satisfies) return;
+    if (doneChecks[s.satisfies]) delete doneChecks[s.satisfies];
+    else { pushUndo("Done: " + s.h); doneChecks[s.satisfies] = true; }
+    saveDone();
+    analyze();
+  }));
   els.suggestions.querySelectorAll("[data-r]").forEach(b => b.addEventListener("click", () => {
     const s = out[+b.dataset.r];
     if (!s || !s.fix) return;
+    pushUndo(s.h);
     els.body.value = els.body.value.replace(s.fix.find, () => s.fix.replace);
     analyze(); // re-runs: the fixed issue disappears, which is the confirmation
   }));
@@ -729,8 +748,10 @@ function gradeLevel(text) {
 }
 
 function applyWritingFix(i) {
-  const fix = currentWritingFixes[+i];
+  const entry = currentWritingFixes[+i];
+  const fix = entry && entry.fix;
   if (!fix) return;
+  pushUndo(entry.label || "Writing fix");
   if (fix.special === "prepunct") {
     els.body.value = els.body.value.replace(/ +([,.!?;:])/g, "$1");
   } else if (fix.all) {
@@ -766,7 +787,7 @@ function renderWriting(body) {
 
   toneEl.innerHTML = `<div class="sug"><h4>Tone: ${esc(tone.label)} · Grade ~${grade === null ? "–" : Math.max(1, Math.round(grade))} · ${mins} min read</h4><p class="hint">${esc(tone.advice)} ${esc(cats)}</p></div>`;
 
-  currentWritingFixes = issues.map((x) => x.fix);
+  currentWritingFixes = issues.map((x) => ({ fix: x.fix, label: `${x.cat}: ${x.title}` }));
   const shown = issues.slice(0, 25);
   listEl.innerHTML = shown.map((w, i) =>
     `<li><b><span class="badge ${CAT_CLASS[w.cat]}">${w.cat}</span>${esc(w.title)}</b><p>${esc(w.detail)}</p>` +
@@ -778,7 +799,7 @@ function renderWriting(body) {
 }
 
 // Words that must never end a heading (they dangle: "...eligible will be", "...adept with").
-const DANGLING = new Set(("a,an,the,and,or,but,to,of,with,for,in,on,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,that,which,who,whom,whose,when,where,while,until,unless,though,although,because,since,able,likely,due,per,via,than,so,yet,nor,both,either,such,more,most,very,just,quite,rather,up,out,off,away").split(","));
+const DANGLING = new Set(("a,an,the,and,or,but,to,of,with,for,in,on,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,that,which,who,whom,whose,when,where,while,until,unless,though,although,because,since,able,likely,adept,capable,responsible,available,ready,willing,eager,prone,accustomed,subject,due,per,via,than,so,yet,nor,both,either,such,more,most,very,just,quite,rather,up,out,off,away").split(","));
 const AUDIENCE_BLOCK = /^(example|instance|starters?|one (more )?thing|the (record|moment)|now|better or worse)$/i;
 
 // Compress an opening line into a title: drop throat-clearing ("By training…",
@@ -828,15 +849,44 @@ function craftHeading(block) {
     }
   }
   if (/\$\s?\d|\bpricing?\b|\bcosts?\b|\bsubscription\b/i.test(plain)) return { title: "Pricing and availability", reason: "it mentions price or access" };
-  const entities = [...plain.matchAll(/([A-Z][a-zA-Z&'-]*(?:\s+[A-Z][a-zA-Z&'-]*)+)/g)]
-    .map((e) => e[1].trim().replace(/^(the|a|an) /i, "")).filter((e) => e && e.split(" ").length <= 5);
-  if (entities.length) {
-    entities.sort((a, b) => b.length - a.length);
-    return { title: `The ${entities[0]}`, reason: `it centers on ${entities[0]}` };
+  // Named entities — but scored, not just longest: an entity counts as the topic
+  // only if it repeats, or opens the paragraph outside of a list ("Firms like
+  // Bain, Capgemini, …" are examples, never the topic). Single mentions buried
+  // in lists are rejected and generation falls through to better rules.
+  const sents = plain.split(/(?<=[.!?…])\s+/);
+  const seqCount = (s) => (s.match(/([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)+)/g) || []).length;
+  const seen = new Map();
+  for (const m of plain.matchAll(/([A-Z][\w'-]*(?:(?:\s+(?:of|&|and)\s+|\s+)[A-Z][\w'-]*)+)/g)) {
+    const key = m[1].trim().replace(/^(the|a|an) /i, "");
+    if (!key || key.split(" ").length > 5) continue;
+    const at = plain.indexOf(m[0]);
+    const sent = sents.find((s) => s.includes(m[0])) || "";
+    const e = seen.get(key) || { count: 0, inFirst: false, listSentence: true, at };
+    e.count += 1;
+    if (sents[0] && sents[0].includes(m[0])) e.inFirst = true;
+    if (seqCount(sent) < 3) e.listSentence = false;
+    seen.set(key, e);
+  }
+  let bestEnt = null, bestScore = 0;
+  for (const [text, e] of seen) {
+    if (!(e.count >= 2 || (e.inFirst && !e.listSentence))) continue;
+    const score = e.count * 10 + (e.inFirst ? 5 : 0) + text.length / 20;
+    if (score > bestScore) { bestScore = score; bestEnt = { text, count: e.count }; }
+  }
+  if (bestEnt) return { title: `The ${bestEnt.text}`, reason: bestEnt.count > 1 ? `“${bestEnt.text}” runs through the paragraph` : `it opens on ${bestEnt.text}` };
+  // Concrete figures ("10,000 software engineers") beat bland fallbacks —
+  // with trailing complement-hungry adjectives stripped ("adept" needs an "at").
+  const AUX = /^(have|has|had|will|would|can|could|shall|should|may|might|must|are|is|was|were|be|been|do|does|did|more|less|than|over|under|per|vs|and|or|of|to|in|on|by|for|with|from|at|as|a|the|an|that|which|who)$/i;
+  for (const m of plain.matchAll(/(\d[\d,]*(?:\.\d+)?)\s+([a-zA-Z]+(?: [a-zA-Z]+){0,2})/g)) {
+    const num = parseFloat(m[1].replace(/,/g, ""));
+    const parts = m[2].replace(/[,;:.]+$/, "").split(" ").filter(Boolean);
+    while (parts.length > 1 && (AUX.test(parts[parts.length - 1]) || DANGLING.has(parts[parts.length - 1].toLowerCase()))) parts.pop();
+    if (num >= 100 && parts.length >= 1 && !AUX.test(parts[0]))
+      return { title: `${m[1]} ${parts.join(" ")}`, reason: "it leads with a concrete figure" };
   }
   const first = plain.split(/(?<=[.!?…])\s+/)[0] || plain;
   const t = compressTitle(first, 52);
-  if (t.split(" ").length >= 3) return { title: t, reason: "distilled from the opening line" };
+  if (t.split(" ").length >= 3) return { title: t, reason: "distilled from the opening line", draft: true };
   return null;
 }
 
@@ -862,12 +912,47 @@ function headingInsertions(body, kw) {
     if (/^#{1,6}\s/.test(before)) continue; // already has a heading
     const crafted = craftHeading(block);
     const plain = stripMdHtml(block).replace(/\s+/g, " ").trim();
-    if (crafted) out.push({ para: block, title: crafted.title, reason: crafted.reason, preview: plain.slice(0, 60) });
-    else out.push({ para: block, title: STATIC_HEADINGS[out.length % STATIC_HEADINGS.length], reason: "no specific header could be derived from this paragraph, so this is a placeholder at the right spot", preview: plain.slice(0, 60), placeholder: true });
+    if (crafted) out.push({ para: block, title: crafted.title, reason: crafted.reason, preview: plain.slice(0, 60), draft: !!crafted.draft });
+    else out.push({ para: block, title: STATIC_HEADINGS[out.length % STATIC_HEADINGS.length], reason: "no specific header could be derived from this paragraph, so this is a placeholder at the right spot", preview: plain.slice(0, 60), placeholder: true, draft: true });
     if (out.length >= 4) break;
   }
   return out;
 }
+
+/* ---------- Undo (one-click reversal for every programmatic edit) ----------
+   Typing is covered by the browser's native Ctrl/Cmd+Z per field; this stack
+   covers the destructive actions: Replace/Insert fixes, Apply-fix buttons,
+   Clear, and Load sample. */
+const undoStack = [];
+const draftSnap = () => ({ keyphrase: els.keyphrase.value, title: els.title.value, summary: els.summary.value, excerpt: els.excerpt.value, body: els.body.value });
+function pushUndo(label) {
+  undoStack.push({ label, snap: draftSnap() });
+  if (undoStack.length > 30) undoStack.shift();
+  renderUndo();
+}
+function renderUndo() {
+  const b = $("btn-undo");
+  if (!b) return;
+  b.disabled = !undoStack.length;
+  b.textContent = undoStack.length ? `Undo (${undoStack.length})` : "Undo";
+  b.title = undoStack.length ? `Undo: ${undoStack[undoStack.length - 1].label}` : "Nothing to undo";
+}
+function undoLast() {
+  const u = undoStack.pop();
+  if (!u) return;
+  els.keyphrase.value = u.snap.keyphrase; els.title.value = u.snap.title;
+  els.summary.value = u.snap.summary; els.excerpt.value = u.snap.excerpt;
+  els.body.value = u.snap.body;
+  renderUndo();
+  analyze();
+}
+
+/* ---------- Done marks (manual passes for checks the parser can't verify) ---------- */
+const LS_DONE = "seo-review-done-v1";
+let doneChecks = {};
+try { doneChecks = JSON.parse(localStorage.getItem(LS_DONE) || "{}"); } catch { doneChecks = {}; }
+function saveDone() { localStorage.setItem(LS_DONE, JSON.stringify(doneChecks)); }
+function resetDone() { doneChecks = {}; saveDone(); }
 
 /* ---------- Draft persistence / toolbar ---------- */
 function saveDraft() {
@@ -909,11 +994,15 @@ for (const el of [els.keyphrase, els.title, els.summary, els.excerpt, els.body])
   el.addEventListener("input", queueAnalyze);
 
 $("btn-sample").addEventListener("click", () => {
+  pushUndo("Load sample");
+  resetDone(); // dones belong to the previous draft, not the sample
   els.keyphrase.value = SAMPLE.keyphrase; els.title.value = SAMPLE.title;
   els.summary.value = SAMPLE.summary; els.excerpt.value = SAMPLE.excerpt; els.body.value = SAMPLE.body;
   analyze();
 });
 $("btn-clear").addEventListener("click", () => {
+  if ([els.keyphrase, els.title, els.summary, els.excerpt, els.body].some((el) => el.value)) pushUndo("Clear draft");
+  resetDone(); // fresh draft, fresh checklist
   for (const el of [els.keyphrase, els.title, els.summary, els.excerpt, els.body]) el.value = "";
   analyze();
 });
@@ -924,5 +1013,8 @@ $("btn-copy-report").addEventListener("click", (e) => {
   });
 });
 
+$("btn-undo").addEventListener("click", undoLast);
+
 loadDraft();
 loadRules();
+renderUndo();
