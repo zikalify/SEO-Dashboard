@@ -13,7 +13,7 @@ Fields (all optional): **focus keyphrase, title, article summary** (doubles as m
 
 ## Hashtags + article tags (generated from your draft)
 
-Below the article box, the app extracts **hashtags** and **article tags** live from your title + body — company, product and versions first (`Anthropic`, `Claude Sonnet 5.5`, `GPT-6`), then keyphrase and frequent keywords. The version rule you asked about is baked in: dots never survive in hashtags (`Sonnet 5.5` → `#Sonnet55`, `GPT-6` → `#GPT6`, capped at sensible lengths) but are kept in article tags (`Sonnet 5.5`, `GPT-6`). Chips you don't like get ×-ed away (persisted), with Copy buttons emitting space-joined hashtags and comma-separated tags, plus Reset to restore.
+Below the article box, the app extracts **hashtags** and **article tags** live from your title + body — company, product and versions first (`Anthropic`, `Claude Sonnet 5.5`, `GPT-6`), then keyphrase and frequent keywords. The version rule you asked about is baked in: dots never survive in hashtags (`Sonnet 5.5` → `#Sonnet55`, `GPT-6` → `#GPT6`, capped at sensible lengths) but are kept in article tags (`Sonnet 5.5`, `GPT-6`). Fragments are suppressed automatically (`European` never appears without `European Union`), with Copy buttons emitting space-joined hashtags and comma-separated tags.
 
 ## Writing assistant (Grammarly-style, rule-based)
 

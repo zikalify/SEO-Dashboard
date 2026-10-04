@@ -89,18 +89,28 @@ function parseLinks(raw, domain) {
   return { all: uniq, internal, external };
 }
 const TRANSITIONS = ["however", "therefore", "for example", "in addition", "moreover", "meanwhile", "consequently", "instead", "although", "because", "finally", "first", "second", "also", "but", "so", "then", "furthermore", "overall", "in contrast", "on the other hand"];
-const transitionShare = (text) => {
+// A transition counts when it opens a sentence ("However, …", "First, …") or is
+// set off by a comma ("…, however, …") — bare mid-sentence "first"/"also" is
+// usually just a word, not a connector ("First intro words" doesn't connect).
+const transitionHits = (text) => {
   const ss = sentencesOf(text);
-  if (!ss.length) return 0;
-  const hit = ss.filter(s => TRANSITIONS.some(t => new RegExp(`\\b${t}\\b`, "i").test(s))).length;
-  return hit / ss.length;
+  const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const inSent = (s, t) => {
+    const T = s.trim();
+    if (/^(first|second)$/i.test(t)) return new RegExp(`^${esc(t)},`, "i").test(T);
+    return new RegExp(`^${esc(t)}\\b|\\b${esc(t)},`, "i").test(T);
+  };
+  const hits = ss.filter((s) => TRANSITIONS.some((t) => inSent(s, t)));
+  const used = TRANSITIONS.filter((t) => ss.some((s) => inSent(s, t)));
+  return { share: ss.length ? hits.length / ss.length : 0, count: hits.length, used };
 };
+const transitionShare = (text) => transitionHits(text).share;
 const passiveShare = (text) => {
   const ss = sentencesOf(text);
   if (!ss.length) return 0;
-  const re = /\b(am|is|are|was|were|be|been|being)\b\s+(\w+ed\b|\w+en\b|built|written|made|done|taken|given|shown|found|known|thought|said)/i;
-  return ss.filter(s => re.test(s)).length / ss.length;
+  return ss.filter(s => PASSIVE_RE.test(s)).length / ss.length;
 };
+const PASSIVE_RE = /\b(am|is|are|was|were|be|been|being)\b\s+(\w+ed\b|\w+en\b|built|written|made|done|taken|given|shown|found|known|thought|said)/i;
 const keywordCount = (text, kw) => {
   if (!kw) return 0;
   const t = stripMdHtml(text).toLowerCase(), k = kw.toLowerCase().trim();
@@ -145,7 +155,7 @@ function analyze() {
     const hasNum = /\d/.test(title);
     if (hasPower || hasNum) add("title-hook", "pass", "Title has a hook", `${[hasNum && "number", hasPower && "power word"].filter(Boolean).join(" + ")} detected — good for click-through.`, 1);
     else add("title-hook", "warn", "Title could hook harder", "Consider a number, a power word (e.g. “proven”, “complete”, “how”) or a clear benefit to stand out in the SERP.", 1);
-    if (/[A-Z]{4,}/.test(title)) add("title-caps", "warn", "Title: avoid ALL-CAPS stretches", "Full caps looks spammy and can hurt CTR.", 0.5);
+    if (/[A-Z]{4,}/.test(title)) add("title-caps", "warn", "Title: avoid ALL-CAPS stretches", `“${title.match(/[A-Z]{4,}/)[0]}” reads as shouting — use normal case.`, 0.5);
   }
 
   /* Summary (meta description role) */
@@ -155,8 +165,8 @@ function analyze() {
   else {
     if (sl < R.summary.minChars) add("summary-len", "warn", `Summary short (${sl} chars)`, `Expand toward ${R.summary.minChars}–${R.summary.maxChars} characters with a benefit + reason to click. Thin snippets get rewritten by Google.`, 2);
     else if (sl <= R.summary.maxChars) add("summary-len", "pass", `Summary length good (${sl} chars)`, "Sits inside the snippet window.", 2);
-    else if (sl <= R.summary.hardMaxChars) add("summary-len", "warn", `Summary may truncate (${sl} chars)`, `Trim to ~${R.summary.maxChars} so the call-to-action survives.`, 2);
-    else add("summary-len", "fail", `Summary too long (${sl} chars)`, "Will be cut off. Keep the keyphrase + one promise + one CTA.", 2);
+    else if (sl <= R.summary.hardMaxChars) add("summary-len", "warn", `Summary may truncate (${sl} chars)`, `Search cuts everything after “…${summary.trim().slice(Math.max(0, R.summary.maxChars - 30), R.summary.maxChars)}” — move the CTA before that point.`, 2);
+    else add("summary-len", "fail", `Summary too long (${sl} chars)`, `Dropped in search: “…${summary.trim().slice(R.summary.maxChars, R.summary.maxChars + 45)}…”. Keep the keyphrase + one promise + one CTA.`, 2);
     if (kw) {
       add(...kwCheck(summary, kw, "summary-kw", "Summary", 1.5));
     }
@@ -169,7 +179,7 @@ function analyze() {
   else {
     if (exl < R.excerpt.minChars) add("excerpt-len", "warn", `Excerpt short (${exl} chars)`, `Flesh it toward ${R.excerpt.minChars}–${R.excerpt.maxChars} characters with a concrete hook.`, 1);
     else if (exl <= R.excerpt.maxChars) add("excerpt-len", "pass", `Excerpt length good (${exl} chars)`, "Snappy enough for cards and feeds.", 1);
-    else add("excerpt-len", "warn", `Excerpt long (${exl} chars)`, "May get cut on cards — keep the hook in the first ~120 characters.", 1);
+    else add("excerpt-len", "warn", `Excerpt long (${exl} chars)`, `Cards cut everything after “…${excerpt.trim().slice(Math.max(0, R.excerpt.maxChars - 30), R.excerpt.maxChars)}” — front-load the hook.`, 1);
     if (kw) add(...kwCheck(excerpt, kw, "excerpt-kw", "Excerpt", 1));
     if (summary.trim() && stripMdHtml(summary).toLowerCase() === stripMdHtml(excerpt).toLowerCase())
       add("excerpt-dup", "warn", "Excerpt duplicates summary", "Differentiate them: summary = what the article delivers (SEO), excerpt = why to click now (tease).", 1);
@@ -186,14 +196,17 @@ function analyze() {
     else add("body-len", "pass", `Article depth good (${bw} words)`, "Length supports topical coverage. Keep it scannable (headings, short paragraphs).", 3);
 
     const paras = body.split(/\n\s*\n/).filter(p => stripMdHtml(p).split(/\s+/).length > 2);
-    if (paras.length < R.body.minParagraphs) add("body-para", "warn", "Few paragraphs", "Break the draft into short paragraphs — walls of text hurt dwell time.", 1);
+    if (paras.length < R.body.minParagraphs) add("body-para", "warn", "Few paragraphs", `Only ${paras.length} paragraph${paras.length === 1 ? "" : "s"} for ${bw} words — break the draft into short paragraphs; walls of text hurt dwell time.`, 1);
     const longParas = paras.filter(p => words(p).length > R.body.maxParagraphWords).length;
-    if (longParas > 0) add("body-paralen", "warn", `${longParas} long paragraph${longParas > 1 ? "s" : ""}`, `Keep paragraphs under ~${R.body.maxParagraphWords} words for skimmers.`, 1);
+    if (longParas > 0) {
+      const fattest = paras.slice().sort((a, b) => words(b).length - words(a).length)[0];
+      add("body-paralen", "warn", `${longParas} long paragraph${longParas > 1 ? "s" : ""}`, `Longest starts “…${smartTrim(stripMdHtml(fattest).replace(/\s+/g, " ").trim(), 70)}” (${words(fattest).length} words) — keep paragraphs under ~${R.body.maxParagraphWords} words for skimmers.`, 1);
+    }
 
     const ss = sentencesOf(body);
     const longS = ss.filter(s => s.split(/\s+/).length > R.body.maxSentenceWords);
     if (ss.length && longS.length / ss.length > R.body.longSentenceShareWarn)
-      add("body-sent", "warn", `${Math.round(longS.length / ss.length * 100)}% long sentences`, `Over ${R.body.maxSentenceWords} words per sentence strains readers. Split the longest ${Math.min(3, longS.length)} — see suggestions.`, 1.5);
+      add("body-sent", "warn", `${Math.round(longS.length / ss.length * 100)}% long sentences (${longS.length} of ${ss.length})`, `Over ${R.body.maxSentenceWords} words per sentence strains readers — the split suggestions below quote each one.`, 1.5);
     else if (ss.length) add("body-sent", "pass", "Sentence length fine", "Readable rhythm for skimmers.", 1);
 
     const heads = parseHeadings(body);
@@ -206,7 +219,8 @@ function analyze() {
       if (secs.length >= need) add("body-h", "pass", `${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`, "Good structure for skimmers and crawlers.", 2);
       else add("body-h", "warn", `Only ${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`, `For ~${bw} words aim for ~${need}. Each ${tag} should promise one answer.`, 2);
     }
-    if (heads.some(h => h.level === 1) || /^#\s/m.test(body)) add("body-h1", "warn", "Avoid H1 inside the body", `Your title is the H1 — start body sections at ${hashes}.`, 0.5);
+    const h1 = heads.find(h => h.level === 1);
+    if (heads.some(h => h.level === 1) || /^#\s/m.test(body)) add("body-h1", "warn", "Avoid H1 inside the body", `Found “${(h1 && h1.text) || (body.match(/^#\s+(.+)$/m) || [])[1] || "H1"}” — your title is already the H1, so start body sections at ${hashes}.`, 0.5);
 
     const { internal, external } = parseLinks(body, R.body.siteDomain);
     if (internal.length < R.body.minInternalLinks) add("body-il", "warn", "No internal links detected", "Link to 1–2 related posts/pages — it distributes authority and keeps readers around.", 1.5);
@@ -235,18 +249,32 @@ function analyze() {
 
     const f = flesch(body);
     if (f === null) add("body-read", "skip", "Readability: need more text", "Flesch score appears after ~30 words.", 0);
-    else if (f >= R.readability.fleschGood) add("body-read", "pass", `Readable (Flesch ${Math.round(f)})`, "Plain language — good for broad audiences.", 1);
-    else if (f >= R.readability.fleschOkay) add("body-read", "warn", `Fairly dense (Flesch ${Math.round(f)})`, "Shorten sentences, swap jargon for plain words.", 1);
-    else add("body-read", "fail", `Hard to read (Flesch ${Math.round(f)})`, "Break up sentences, use lists and headings. See suggestions.", 1);
+    else {
+      const avgLen = Math.round(ss.reduce((a, s) => a + s.split(/\s+/).length, 0) / ss.length);
+      const longest = ss.slice().sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length)[0];
+      const ev = `Average ${avgLen} words/sentence; longest starts “…${smartTrim(longest, 80)}”.`;
+      if (f >= R.readability.fleschGood) add("body-read", "pass", `Readable (Flesch ${Math.round(f)})`, `Plain language for broad audiences. ${ev}`, 1);
+      else if (f >= R.readability.fleschOkay) add("body-read", "warn", `Fairly dense (Flesch ${Math.round(f)})`, `Shorten sentences, swap jargon for plain words. ${ev}`, 1);
+      else add("body-read", "fail", `Hard to read (Flesch ${Math.round(f)})`, `Break up sentences, use lists and headings. ${ev}`, 1);
+    }
 
     const ts = transitionShare(body);
-    if (ss.length > 4) add("body-trans", ts >= R.body.transitionWordsMinShare ? "pass" : "warn",
-      `Transition words in ${Math.round(ts * 100)}% of sentences`,
-      ts >= R.body.transitionWordsMinShare ? "Good flow." : "Add connectors (however, for example, finally…) to carry readers through.", 0.5);
+    if (ss.length > 4) {
+      const used = transitionHits(body).used;
+      const missing = ["however", "for example", "finally", "meanwhile", "in contrast"].filter((t) => !used.map((u) => u.toLowerCase()).includes(t.toLowerCase()));
+      add("body-trans", ts >= R.body.transitionWordsMinShare ? "pass" : "warn",
+        `Transition words in ${Math.round(ts * 100)}% of sentences`,
+        ts >= R.body.transitionWordsMinShare
+          ? `Good flow — you already use: ${used.slice(0, 5).join(", ") || "a few"}.`
+          : `${used.length ? `Found only: ${used.slice(0, 4).join(", ")}. Widen with: ${missing.slice(0, 3).join(", ") || "meanwhile"}.` : "None detected — try however, for example, finally to carry readers through."}`, 0.5);
+    }
     const pv = passiveShare(body);
-    if (ss.length > 4) add("body-passive", pv <= R.body.passiveVoiceMaxShare ? "pass" : "warn",
-      `Passive voice ~${Math.round(pv * 100)}%`,
-      pv <= R.body.passiveVoiceMaxShare ? "Active voice dominates." : "Prefer active verbs (“we tested” over “was tested”).", 0.5);
+    if (ss.length > 4) {
+      const hits = ss.filter((s) => PASSIVE_RE.test(s)).slice(0, 2).map((s) => `“${smartTrim(s, 90)}”`).join(" ");
+      add("body-passive", pv <= R.body.passiveVoiceMaxShare ? "pass" : "warn",
+        `Passive voice ~${Math.round(pv * 100)}%`,
+        pv <= R.body.passiveVoiceMaxShare ? "Active voice dominates." : `Prefer active verbs (“we tested” over “was tested”). Flagged: ${hits}`, 0.5);
+    }
   }
 
   render(checks, { kw, title, summary, excerpt, body });
@@ -560,6 +588,20 @@ function suggestTitle(title, kw) {
   return t;
 }
 
+// Lowest-Flesch paragraph (30+ words): returns {raw, text, f} or null.
+function densestParagraph(body) {
+  let worst = null;
+  for (const block of (body || "").split(/\n\s*\n/)) {
+    const t = block.trim();
+    if (/^\s*(#{1,6}\s+|>\s*|```|\||<)/.test(t)) continue;
+    if (words(t).length < 30) continue;
+    const f = flesch(t);
+    if (f === null) continue;
+    if (!worst || f < worst.f) worst = { raw: block, text: stripMdHtml(t).replace(/\s+/g, " ").trim(), f };
+  }
+  return worst;
+}
+
 function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, totalW) {
   const out = [];
   // satisfies: the check-id this suggestion resolves — lets a Done mark count
@@ -638,8 +680,12 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
       }
     });
     const f = flesch(body);
-    if (f !== null && f < RULES.rules.readability.fleschOkay)
-      push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.", null, false, "body-read");
+    if (f !== null && f < RULES.rules.readability.fleschOkay) {
+      const dense = densestParagraph(body);
+      if (dense) push("Readability fix", `Flesch ${Math.round(f)} is dense overall — worst section quoted below. Rewrite it with ~15-word sentences, active verbs, and a list.`,
+        "“" + smartTrim(dense.text, 220) + "”", { find: dense.raw, findOnly: true }, false, "body-read");
+      else push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs. Rewrite one paragraph with ~15-word sentences, active verbs, and a list.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.", null, false, "body-read");
+    }
   }
 
   // Rank by exact score impact: fixing a failed heavyweight check gains more
@@ -656,9 +702,11 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
   els.suggestions.innerHTML = out.length ? out.map((s, i) => {
     const done = s.satisfies && doneChecks[s.satisfies];
     return `<div class="sug${done ? " is-done" : ""}"><h4>${esc(s.h)}${s.impact > 0 ? ` <span class="badge impact">+${s.impact}</span>` : ""}${done ? ' <span class="badge manual">done ✓</span>' : ""}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote>` +
-    (s.fix
+    (s.fix && !s.fix.findOnly
       ? `<button class="btn small copy" data-r="${i}" type="button">${esc(s.fix.verb || "Replace in draft")}</button> <button class="btn small ghost" data-find="${i}" type="button">Find</button>`
-      : (s.copy ? `<button class="btn small copy" data-i="${i}" type="button">Copy</button>` : "")) +
+      : (s.fix && s.fix.findOnly
+        ? `<button class="btn small ghost" data-find="${i}" type="button">Find</button>`
+        : (s.copy ? `<button class="btn small copy" data-i="${i}" type="button">Copy</button>` : ""))) +
     (s.satisfies ? ` <button class="btn small ghost" data-done="${i}" type="button">${done ? "Undo" : "Done"}</button>` : "") + `</div>`;
   }).join("")
     : `<p class="hint">Suggestions will appear here once there is something to review.</p>`;
@@ -1260,11 +1308,7 @@ function headingInsertions(body, kw) {
    Hashtags: PascalCase, alphanumeric only — dots never survive ("Sonnet 5.5"
    becomes #Sonnet55, because "#Sonnet 5.5" is two broken tags). Article tags
    keep natural spelling ("Sonnet 5.5"). Company/product/version first. */
-const LS_REMOVED = "seo-review-removed-v1";
-let removedTags = { h: [], t: [] };
-try { removedTags = Object.assign({ h: [], t: [] }, JSON.parse(localStorage.getItem(LS_REMOVED) || "{}")); } catch { removedTags = { h: [], t: [] }; }
-let lastHash = [], lastTags = [], lastVals = null;
-const saveRemoved = () => localStorage.setItem(LS_REMOVED, JSON.stringify(removedTags));
+let lastHash = [], lastTags = [];
 
 function hashtagify(wordsArr, digits) {
   const glue = new Set(["of", "the", "a", "an", "and", "for", "with", "de", "van"]);
@@ -1305,9 +1349,12 @@ function extractTagData(body, title, kw) {
     if (!t || n > 4) continue;
     if (n === 1) {
       if (t.length < 3 || STOPWORDS.has(t.toLowerCase())) continue;
-      const c = plain.split(new RegExp(`\\b${escRe(t)}\\b`, "gi")).length - 1;
-      if (c < 2) continue;
-      ent.set(t, (ent.get(t) || 0) + c);
+      const occ = [...plain.matchAll(new RegExp(`\\b${escRe(t)}\\b`, "gi"))].map((m) => m[0]);
+      if (occ.length < 2) continue;
+      // A real name is capitalized (nearly) every time; a common noun caught
+      // mid-sentence ("Teams" vs "teams") is not — ties go to the noun.
+      if (occ.filter((o) => /^[A-Z]/.test(o)).length / occ.length <= 0.5) continue;
+      ent.set(t, (ent.get(t) || 0) + occ.length);
     } else {
       if (listSent(m.index)) continue;
       ent.set(t, (ent.get(t) || 0) + 1);
@@ -1351,35 +1398,44 @@ function extractTagData(body, title, kw) {
     addH(hashtagify(e.split(/\s+/).slice(0, 3), ""));
   }
   if (kw && kw.trim()) addH(hashtagify(kw.trim().split(/\s+/).slice(0, 3), ""));
+  // Drop singleton fragments ("European") when nearly all mentions live inside
+  // a kept longer tag ("European Union"); standalone-popular names stay.
+  const dropFrag = new Set();
+  for (const t of tags) {
+    if (/\s/.test(t) || t.length < 3) continue;
+    const total = plain.split(new RegExp(`\\b${escRe(t)}\\b`, "gi")).length - 1;
+    let inside = 0;
+    for (const p of tags) {
+      if (p === t || !p.toLowerCase().split(/\s+/).some((w) => w === t.toLowerCase())) continue;
+      inside += plain.split(new RegExp(`\\b${escRe(p)}\\b`, "gi")).length - 1;
+    }
+    if (total - inside < 2) dropFrag.add(t.toLowerCase());
+  }
   // Drop bare duplicates when a versioned extension exists ("Claude Sonnet"
   // next to "Claude Sonnet 5.5"; "#ClaudeSonnet" next to "#ClaudeSonnet55").
   const extendsWithVersion = (shorter, longer) =>
     longer.toLowerCase().startsWith(shorter.toLowerCase()) &&
     /[\s.\-]*v?\d/.test(longer.slice(shorter.length));
   const dedup = (list) => list.filter((t, i) => !list.some((u, j) => j !== i && extendsWithVersion(t, u)));
-  return { hash: dedup(hash).slice(0, 10), tags: dedup(tags).slice(0, 14) };
+  return {
+    hash: dedup(hash.filter((h) => !dropFrag.has(h.slice(1).toLowerCase()))).slice(0, 10),
+    tags: dedup(tags.filter((t) => !dropFrag.has(t.toLowerCase()))).slice(0, 14),
+  };
 }
 
 function renderTags(vals) {
-  lastVals = vals;
   const data = extractTagData(vals.body, vals.title, vals.keyphrase);
-  lastHash = data.hash.filter((h) => !removedTags.h.includes(h.toLowerCase()));
-  lastTags = data.tags.filter((t) => !removedTags.t.includes(t.toLowerCase()));
+  lastHash = data.hash;
+  lastTags = data.tags;
   const he = $("hashtags"), te = $("articletags");
   he.innerHTML = lastHash.length
-    ? lastHash.map((h, i) => `<span class="chip">${esc(h)}<button data-rh="${i}" type="button" title="Remove">×</button></span>`).join("")
+    ? lastHash.map((h) => `<span class="chip">${esc(h)}</span>`).join("")
     : `<p class="hint">Hashtags appear once your draft has names, products or versions.</p>`;
   te.innerHTML = lastTags.length
-    ? lastTags.map((t, i) => `<span class="chip tag">${esc(t)}<button data-rt="${i}" type="button" title="Remove">×</button></span>`).join("")
+    ? lastTags.map((t) => `<span class="chip tag">${esc(t)}</span>`).join("")
     : `<p class="hint">Tags appear here — company, product and versions first.</p>`;
   $("c-hash").textContent = lastHash.length ? lastHash.length + " tags" : "";
   $("c-tags").textContent = lastTags.length ? lastTags.length + " tags" : "";
-  he.querySelectorAll("[data-rh]").forEach((b) => b.addEventListener("click", () => {
-    removedTags.h.push(lastHash[+b.dataset.rh].toLowerCase()); saveRemoved(); renderTags(lastVals);
-  }));
-  te.querySelectorAll("[data-rt]").forEach((b) => b.addEventListener("click", () => {
-    removedTags.t.push(lastTags[+b.dataset.rt].toLowerCase()); saveRemoved(); renderTags(lastVals);
-  }));
 }
 
 /* ---------- Undo (one-click reversal for every programmatic edit) ----------
@@ -1516,14 +1572,12 @@ $("btn-copy-hash").addEventListener("click", (e) => {
     setTimeout(() => b.textContent = "Copy hashtags", 1200);
   });
 });
-$("btn-reset-hash").addEventListener("click", () => { removedTags.h = []; saveRemoved(); if (lastVals) renderTags(lastVals); });
 $("btn-copy-tags").addEventListener("click", (e) => {
   navigator.clipboard.writeText(lastTags.join(", ")).then(() => {
     const b = e.currentTarget; b.textContent = "Copied!";
     setTimeout(() => b.textContent = "Copy tags", 1200);
   });
 });
-$("btn-reset-tags").addEventListener("click", () => { removedTags.t = []; saveRemoved(); if (lastVals) renderTags(lastVals); });
 
 loadDraft();
 loadRules();
