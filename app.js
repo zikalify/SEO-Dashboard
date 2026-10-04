@@ -19,10 +19,10 @@ const FALLBACK_RULES = {
     title: { minChars: 40, maxChars: 60, hardMaxChars: 70, rewriteSafeMin: 51, rewriteSafeMax: 55, keywordAtStartMaxPos: 15 },
     summary: { minChars: 120, maxChars: 155, hardMaxChars: 170 },
     excerpt: { minChars: 80, maxChars: 160, hardMaxChars: 200 },
-    body: { minWords: 300, goodWords: 1000, minParagraphs: 3, maxSentenceWords: 25, longSentenceShareWarn: 0.25, maxParagraphWords: 120, keywordDensityMin: 0.005, keywordDensityMax: 0.025, keywordDensityGoodMax: 0.02, firstKeywordWithinWords: 100, sectionLevel: 2, minSections: 1, wordsPerSection: 350, siteDomain: "", minInternalLinks: 1, minExternalLinks: 1, transitionWordsMinShare: 0.2, passiveVoiceMaxShare: 0.15 },
+    body: { minWords: 300, goodWords: 1000, minParagraphs: 3, maxSentenceWords: 25, longSentenceShareWarn: 0.25, maxParagraphWords: 120, keywordDensityMin: 0.005, keywordDensityMax: 0.025, keywordDensityGoodMax: 0.02, firstKeywordWithinWords: 100, sectionLevel: 2, minSections: 1, wordsPerSection: 350, siteDomain: "", minInternalLinks: 1, minExternalLinks: 1, transitionWordsMinShare: 0.2, passiveVoiceMaxShare: 0.15, minWordsForList: 400, minWordsForFaq: 500, minWordsForConclusion: 400 },
     readability: { fleschGood: 60, fleschOkay: 40 },
   },
-  powerWords: ["ultimate", "proven", "essential", "complete", "best", "guide", "how", "why", "new", "free", "easy", "fast", "secret", "top"],
+  powerWords: ["absolute", "advanced", "affordable", "alluring", "alternative", "amazing", "announced", "approved", "astonishing", "attractive", "authentic", "awesome", "backed", "banned", "bargain", "beautiful", "beginner", "benchmark", "best", "blissful", "blueprint", "bold", "bonus", "brave", "breaking", "breakthrough", "brilliant", "budget", "celebrated", "certified", "challenge", "cheap", "checklist", "classic", "clever", "colossal", "comparison", "complete", "comprehensive", "confirmed", "conquer", "coveted", "crazy", "critical", "dazzling", "deal", "decoded", "delight", "delightful", "detailed", "definitive", "discount", "dominant", "dynamic", "easy", "effortless", "elite", "empowering", "envy", "epic", "essential", "exceptional", "exciting", "exclusive", "exotic", "expert", "explained", "exposed", "fast", "fearless", "first", "flagship", "flawless", "foolproof", "forceful", "formula", "framework", "free", "fresh", "futuristic", "gargantuan", "genius", "giant", "glamorous", "glorious", "groundbreaking", "guaranteed", "guide", "hacks", "hands", "handy", "heroic", "hidden", "honest", "how", "huge", "iconic", "incredible", "insider", "instant", "killer", "latest", "lavish", "leaked", "legendary", "limited", "lucrative", "luminous", "magnetic", "majestic", "mammoth", "marvelous", "massive", "master", "mesmerizing", "method", "miraculous", "mistakes", "monumental", "myths", "new", "noteworthy", "now", "official", "opulent", "outstanding", "outrageous", "painless", "peerless", "perfect", "personal", "phenomenal", "picturesque", "playbook", "plush", "popular", "powerful", "practical", "prized", "pro", "profitable", "prominent", "promising", "proven", "quick", "quirky", "radiant", "rapid", "rare", "rave", "refined", "relentless", "remarkable", "results", "revealed", "review", "revolutionary", "roadmap", "robust", "save", "savvy", "seamless", "secret", "secrets", "sensational", "shocking", "simple", "simplified", "sizzling", "skyrocket", "sleek", "smart", "smarter", "spectacular", "splendid", "standout", "step", "steps", "straightforward", "strategy", "sturdy", "sublime", "stunning", "superb", "surprising", "tested", "timeless", "tips", "today", "top", "tricks", "truth", "tutorial", "ultimate", "unbelievable", "unexpected", "upgrade", "urgent", "verified", "versus", "warning", "what", "when", "why", "winning", "worst"],
 };
 
 let RULES = FALLBACK_RULES;
@@ -68,6 +68,8 @@ const flesch = (text) => {
   return 206.835 - 1.015 * (ws.length / ss.length) - 84.6 * (syl / ws.length);
 };
 const esc = (s) => (s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// Emoji + pictographs, for fields that shouldn't carry them (titles/snippets).
+const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F000}-\u{1F02F}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu;
 
 function parseHeadings(raw) {
   const out = [];
@@ -88,7 +90,11 @@ function parseLinks(raw, domain) {
   const external = uniq.filter(h => /^https?:\/\//i.test(h) && !(dom && h.toLowerCase().includes(dom)));
   return { all: uniq, internal, external };
 }
-const TRANSITIONS = ["however", "therefore", "for example", "in addition", "moreover", "meanwhile", "consequently", "instead", "although", "because", "finally", "first", "second", "also", "but", "so", "then", "furthermore", "overall", "in contrast", "on the other hand"];
+const TRANSITIONS = [...new Set([
+  "however", "therefore", "for example", "in addition", "moreover", "meanwhile", "consequently", "instead", "although", "because", "finally", "first", "second", "also", "but", "so", "then", "furthermore", "overall", "in contrast", "on the other hand",
+  "that said", "that being said", "even so", "in fact", "indeed", "as a result", "for instance", "in particular", "in practice", "in other words", "in short", "to be clear", "to sum up", "regardless", "similarly", "likewise", "conversely", "by contrast", "on the contrary", "as such",
+  "for that reason", "as a consequence", "at the same time", "on top of that", "apart from that", "besides that", "on the flip side", "whereas", "while", "once", "next", "lastly", "ultimately", "eventually", "firstly", "secondly", "thirdly", "nextly", "additionally", "alternatively",
+])];
 // A transition counts when it opens a sentence ("However, …", "First, …") or is
 // set off by a comma ("…, however, …") — bare mid-sentence "first"/"also" is
 // usually just a word, not a connector ("First intro words" doesn't connect).
@@ -108,15 +114,45 @@ const transitionShare = (text) => transitionHits(text).share;
 const passiveShare = (text) => {
   const ss = sentencesOf(text);
   if (!ss.length) return 0;
-  return ss.filter(s => PASSIVE_RE.test(s)).length / ss.length;
+  return ss.filter(isPassive).length / ss.length;
 };
-const PASSIVE_RE = /\b(am|is|are|was|were|be|been|being)\b\s+(\w+ed\b|\w+en\b|built|written|made|done|taken|given|shown|found|known|thought|said)/i;
+// Passive voice: auxiliary + past participle. The participle list covers the
+// common irregulars the -ed/-en pattern misses (built, written, told, found…),
+// plus the "-en" endings (-broken, -chosen, -spoken). The leading boundary
+// avoids matching the noun in "is the reason" — that pair is auxiliary+noun.
+const PASSIVE_RE = /\b(?:am|is|are|was|were|be|been|being|get|got|gets)\b\s+(?:not\s+|also\s+|always\s+|often\s+|already\s+|being\s+)?(?:\w+ed\b|\w+en\b|built|written|told|made|done|taken|given|shown|found|known|thought|said|seen|held|kept|left|lost|paid|met|run|set|put|read|led|brought|taught|caught|chosen|drawn|drove|spoken|broken|worn|torn|felt|kept|won|heard|meant|sent|spent|born|become|begun|risen|sunk|shaken|stolen|struck|sworn|swum|thrown|woken|woven|withdrawn|laid|lain|sung|swum|shrunk|spun|stuck|struck|clung|crept|dealt|drunk|flung|flown|fled|grown|risen|shot|shone|slid|spread|swung|thrust|woven)\b/i;
+const isPassive = (s) => {
+  if (!PASSIVE_RE.test(s)) return false;
+  // Reject "is/are/was/were + singular noun" ("is the reason", "are analysts")
+  // so a copula before a noun isn't reported as passive voice.
+  const m = s.match(PASSIVE_RE);
+  const after = (s.slice(m.index + m[0].length).match(/^([A-Za-z']+)/) || [])[1] || "";
+  if (/^(s)$/.test(after) && !/\b(used|supposed|based|concerned|related|referred|preferred|known|seen)$/i.test(m[0].split(/\s+/).pop())) return false;
+  return true;
+};
+// Keyphrase matching is word-boundary aware: a plain substring count made
+// "art" match inside "part"/"article" and "ai" match inside "said". The last
+// word also takes an optional plural so "residency" still matches the
+// "residencies" an author naturally writes — boundaries are only added where
+// the keyphrase edge is a word character, so "GPT-6" works too.
+const pluralTail = (w) => {
+  if (/[^aeiou]y$/.test(w)) return w.slice(0, -1) + "(?:y|ies)";
+  if (/(?:x|z|ch|sh)$/.test(w)) return w + "(?:es)?";
+  return w + "(?:s)?";
+};
+const kwPattern = (kw, flags = "") => {
+  const k = (kw || "").toLowerCase().trim();
+  if (!k) return null;
+  const parts = k.split(/\s+/).map((w) => escRe(w));
+  parts[parts.length - 1] = pluralTail(parts[parts.length - 1]);
+  return new RegExp((/\w/.test(k[0]) ? "\\b" : "") + parts.join("\\s+") + (/\w/.test(k[k.length - 1]) ? "\\b" : ""), flags);
+};
 const keywordCount = (text, kw) => {
-  if (!kw) return 0;
-  const t = stripMdHtml(text).toLowerCase(), k = kw.toLowerCase().trim();
-  if (!k) return 0;
-  return t.split(k).length - 1;
+  const re = kwPattern(kw, "g");
+  return re ? (stripMdHtml(text).toLowerCase().match(re) || []).length : 0;
 };
+// Used for presence tests — a non-global regex, so no lastIndex state leaks.
+const hasKeyword = (text, kw) => { const re = kwPattern(kw); return !!re && re.test(stripMdHtml(text).toLowerCase()); };
 
 /* ---------- Analysis (driven by live RULES) ---------- */
 let lastReport = null;
@@ -144,18 +180,29 @@ function analyze() {
     else if (tl <= R.title.hardMaxChars) add("title-len", "warn", `Title may truncate (${tl} chars)`, `Google typically shows ~60 characters. Trim to under ${R.title.maxChars} so the key promise survives.`, 2);
     else add("title-len", "fail", `Title will truncate (${tl} chars)`, `Over ${R.title.hardMaxChars} characters — rewrite shorter. Put the keyphrase and hook first.`, 2);
 
-    if (kw) {
-      const pos = title.toLowerCase().indexOf(kw.toLowerCase());
+if (kw) {
+      const pos = hasKeyword(title, kw) ? title.toLowerCase().search(kwPattern(kw)) : -1;
       if (pos === -1) add("title-kw", "fail", "Title: missing keyphrase", `Add “${kw}” naturally, ideally within the first ${R.title.keywordAtStartMaxPos} characters.`, 2);
       else if (pos <= R.title.keywordAtStartMaxPos) add("title-kw", "pass", "Title: keyphrase up front", "Good — crawlers and skimmers see the topic immediately.", 2);
       else add("title-kw", "warn", "Title: keyphrase buried", `Found at character ${pos + 1}. Move “${kw}” closer to the front.`, 2);
     } else add("title-kw", "skip", "Title: no keyphrase set", "Add a focus keyphrase above to unlock keyword placement checks.", 0);
 
-    const hasPower = (RULES.powerWords || []).some(p => new RegExp(`\\b${p}\\b`, "i").test(title));
+    const hasPower = (RULES.powerWords || []).some(p => new RegExp(`\\b${escRe(p)}\\b`, "i").test(title));
     const hasNum = /\d/.test(title);
     if (hasPower || hasNum) add("title-hook", "pass", "Title has a hook", `${[hasNum && "number", hasPower && "power word"].filter(Boolean).join(" + ")} detected — good for click-through.`, 1);
     else add("title-hook", "warn", "Title could hook harder", "Consider a number, a power word (e.g. “proven”, “complete”, “how”) or a clear benefit to stand out in the SERP.", 1);
     if (/[A-Z]{4,}/.test(title)) add("title-caps", "warn", "Title: avoid ALL-CAPS stretches", `“${title.match(/[A-Z]{4,}/)[0]}” reads as shouting — use normal case.`, 0.5);
+
+    // Emoji mostly fail to render in search results and can read as clickbait.
+    const emoji = (title.match(EMOJI_RE) || []);
+    const emojiMax = R.title.warnEmojiMax == null ? 0 : R.title.warnEmojiMax;
+    if (emoji.length > emojiMax) add("title-emoji", "warn", `Title: ${emoji.length} emoji`, `“${emoji.slice(0, 3).join("")}${emoji.length > 3 ? "…" : ""}” is likely to be dropped from the SERP and dates fast — let the words carry the promise.`, 0.5);
+
+    // The same keyphrase 3+ times in a 40–60 char title reads as stuffing.
+    if (kw && hasKeyword(title, kw)) {
+      const rep = keywordCount(title, kw);
+      if (rep > 2) add("title-stuff", "warn", `Keyphrase repeated ${rep}× in the title`, "Once is enough — repetition in the title reads as stuffing to readers and search engines alike.", 1);
+    }
   }
 
   /* Summary (meta description role) */
@@ -170,6 +217,12 @@ function analyze() {
     if (kw) {
       add(...kwCheck(summary, kw, "summary-kw", "Summary", 1.5));
     }
+    // A snippet that never gives a reason to click converts poorly.
+    const cta = CTA_RE.test(summary);
+    if (cta) add("summary-cta", "pass", "Summary has a call to action", "Tells the reader what happens next — good for click-through.", 1);
+    else add("summary-cta", "warn", "Summary lacks a call to action", `No reason to click in there. Meta descriptions convert better with one: ${CTA_SAMPLES[0]} — or “${CTA_SAMPLES[1]}”.`, 1);
+    const sem = (summary.match(EMOJI_RE) || []).length;
+    if (sem) add("summary-emoji", "warn", `Summary: ${sem} emoji`, "Emoji can truncate mid-sequence in search results and rarely helps a tech audience.", 0.5);
   }
 
   /* Excerpt */
@@ -183,6 +236,10 @@ function analyze() {
     if (kw) add(...kwCheck(excerpt, kw, "excerpt-kw", "Excerpt", 1));
     if (summary.trim() && stripMdHtml(summary).toLowerCase() === stripMdHtml(excerpt).toLowerCase())
       add("excerpt-dup", "warn", "Excerpt duplicates summary", "Differentiate them: summary = what the article delivers (SEO), excerpt = why to click now (tease).", 1);
+    // Partial overlap still reads as duplicate on a listing page.
+    if (summary.trim() && excerptSharesWith(summary, excerpt))
+      add("excerpt-dup2", "warn", "Excerpt largely repeats the summary", "Say something the summary doesn't — tease a detail, a number or a stake instead of restating it.", 1);
+    if (CTA_RE.test(excerpt)) add("excerpt-cta", "pass", "Excerpt has a hook", "Teases a reason to click — works on cards, feeds and newsletters.", 0.5);
   }
 
   /* Body */
@@ -228,6 +285,27 @@ function analyze() {
     if (external.length < R.body.minExternalLinks) add("body-el", "warn", "No external citations", "Cite 1+ authoritative source — it grounds claims and matches what rankers do.", 1);
     else add("body-el", "pass", `${external.length} external citation${external.length > 1 ? "s" : ""}`, "Good — keep links relevant and fresh.", 1);
 
+    // Scannable structure: bullets/tables and a Q&A block are what let a reader
+    // (and a featured snippet) take the piece in without reading every line.
+    const listLines = countListLines(body);
+    if (bw >= (R.body.minWordsForList || 400)) {
+      if (listLines >= 3) add("body-list", "pass", `${listLines} list/table lines`, "Bulleted or tabular content — easy to skim and easy for search to quote.", 1);
+      else add("body-list", "warn", "No lists or tables in a long piece", `At ${bw} words, all prose is a wall to skim. Turn at least one section into bullets — steps, options or specs.`, 1);
+    }
+    if (bw >= (R.body.minWordsForFaq || 500)) {
+      const faq = heads.some((h) => isFaqHeading(h.text)) || (body.match(FAQ_HEAD_RE) ? true : false);
+      if (faq) add("body-faq", "pass", "FAQ / questions section", "Q&A blocks are the format most likely to be pulled into a featured snippet.", 1);
+      else add("body-faq", "warn", "No FAQ or questions section", `Past ~${R.body.minWordsForFaq || 500} words, add 3–5 real questions your readers ask and answer each in 2–3 sentences.`, 1);
+    }
+    if (bw >= (R.body.minWordsForConclusion || 400)) {
+      if (hasConclusion(body)) add("body-concl", "pass", "Wraps up in a conclusion", "Closing section gives the takeaway and a natural place to restate the keyphrase.", 0.5);
+      else add("body-concl", "warn", "No conclusion or takeaway", "End with a short closing section — what it means, who should care, what to do next.", 0.5);
+    }
+    // Anchor text: bare URLs and "click here" waste the signal the link carries.
+    const anchorIssues = unhelpfulAnchors(body);
+    if (anchorIssues.n) add("body-anchor", "warn", `${anchorIssues.n} unhelpful link${anchorIssues.n > 1 ? "s" : ""}`, `${anchorIssues.why} — a bare URL or “click here” hides the destination from readers and crawlers alike.`, 1);
+    else if (internal.length) add("body-anchor", "pass", "Descriptive link anchors", "Anchor text describes its destination — the strongest internal-linking signal there is.", 0.5);
+
     if (kw) {
       const dens = bw ? keywordCount(body, kw) / bw : 0;
       const occ = keywordCount(body, kw);
@@ -237,12 +315,14 @@ function analyze() {
       else if (dens <= R.body.keywordDensityMax) add("body-kw", "warn", `Keyphrase slightly heavy (${(dens * 100).toFixed(1)}%)`, "Vary with synonyms/pronouns — Google flags unnatural repetition, not a number.", 2.5);
       else add("body-kw", "fail", `Possible keyword stuffing (${(dens * 100).toFixed(1)}%, ${occ}×)`, "Rewrite with pronouns/synonyms. If it sounds forced read aloud, cut it.", 2.5);
 
-      const firstPos = stripMdHtml(body).toLowerCase().indexOf(kw.toLowerCase());
-      const wordsBefore = firstPos === -1 ? Infinity : stripMdHtml(body).slice(0, firstPos).split(/\s+/).filter(Boolean).length;
+      const flat = stripMdHtml(body).toLowerCase();
+      const re = kwPattern(kw);
+      const firstPos = re ? flat.search(re) : -1;
+      const wordsBefore = firstPos === -1 ? Infinity : flat.slice(0, firstPos).split(/\s+/).filter(Boolean).length;
       if (firstPos !== -1 && wordsBefore <= R.body.firstKeywordWithinWords) add("body-intro", "pass", "Keyphrase in intro", `First use within the first ${R.body.firstKeywordWithinWords} words — good topical signal.`, 1.5);
       else if (firstPos !== -1) add("body-intro", "warn", "Keyphrase starts late", `First use is ~${wordsBefore} words in. State the topic within the first ${R.body.firstKeywordWithinWords} words.`, 1.5);
 
-      const inHead = heads.some(h => h.level >= lvl && h.text.toLowerCase().includes(kw.toLowerCase()));
+      const inHead = heads.some(h => hasKeyword(h.text, kw));
       add("body-hkw", inHead ? "pass" : "warn", inHead ? "Keyphrase in a heading" : "No heading contains keyphrase",
         inHead ? "Nice — reinforces structure." : `Work “${kw}” (or a variant) into one ${hashes} heading.`, 1);
     } else add("body-kw", "skip", "Body: no keyphrase set", "Set a focus keyphrase to check density, intro and heading usage.", 0);
@@ -270,7 +350,7 @@ function analyze() {
     }
     const pv = passiveShare(body);
     if (ss.length > 4) {
-      const hits = ss.filter((s) => PASSIVE_RE.test(s)).slice(0, 2).map((s) => `“${smartTrim(s, 90)}”`).join(" ");
+      const hits = ss.filter(isPassive).slice(0, 2).map((s) => `“${smartTrim(s, 90)}”`).join(" ");
       add("body-passive", pv <= R.body.passiveVoiceMaxShare ? "pass" : "warn",
         `Passive voice ~${Math.round(pv * 100)}%`,
         pv <= R.body.passiveVoiceMaxShare ? "Active voice dominates." : `Prefer active verbs (“we tested” over “was tested”). Flagged: ${hits}`, 0.5);
@@ -280,10 +360,84 @@ function analyze() {
   render(checks, { kw, title, summary, excerpt, body });
 }
 
-function kwCheck(text, kw, id, label, weight) {
-  const has = stripMdHtml(text).toLowerCase().includes(kw.toLowerCase());
+const kwCheck = (text, kw, id, label, weight) => {
+  const has = hasKeyword(text, kw);
   return [id, has ? "pass" : "warn", has ? `${label}: keyphrase present` : `${label}: missing keyphrase`,
     has ? "Good — reinforces the topic." : `Weave “${kw}” in naturally, near the front.`, weight];
+};
+
+/* ---------- Reason-to-click / structure detectors ---------- */
+// A CTA in a snippet is what turns a description into an invitation.
+const CTA_RE = /\b(?:read|learn|discover|find out|find|see|watch|check out|check|compare|download|install|try|get|start|join|sign up|subscribe|follow|explore|understand|see how|here'?s|what is|what are|how to|why|plus|bonus|guide|explained|revealed|includes?|covers?|before you|avoid|step inside|take a look|we (?:tested|checked|reviewed|tried|ranked|compared)|our (?:test|review|guide|roundup))\b/i;
+const CTA_SAMPLES = ["here's what to know", "we tested the top options"];
+// Word-level Jaccard overlap — catches an excerpt that rephrases the summary.
+function excerptSharesWith(summary, excerpt) {
+  const tok = (s) => new Set(stripMdHtml(s).toLowerCase().match(/[a-z']{3,}/g) || []);
+  const a = tok(summary), b = tok(excerpt);
+  if (a.size < 4 || b.size < 4) return false;
+  let inter = 0;
+  for (const w of b) if (a.has(w)) inter++;
+  return inter / Math.min(a.size, b.size) >= 0.7;
+}
+// Markdown/HTML list blocks and tables — scannable structure.
+function countListLines(body) {
+  let n = 0;
+  for (const line of (body || "").split("\n")) {
+    if (/^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(line) || /<li\b/i.test(line)) n++;
+  }
+  return n;
+}
+const FAQ_HEAD_RE = /^\s*(?:#{1,6}\s+)?(?:faq|frequently asked|\d+\s*(?:common )?(?:questions|things to know|myths|mistakes))\b/i;
+const isFaqHeading = (text) => FAQ_HEAD_RE.test(text) || /^\s*<h[1-6][^>]*>\s*(?:faq|frequently asked|\d+)/i.test(text);
+const CONCLUSION_RE = /\b(conclusion|concluding|final thoughts|in summary|to sum up|to summarise|to summarize|wrapping up|where (?:this|we) (?:leaves|leaves us)|bottom line|the bottom line|verdict|outro|the takeaway|takeaways|what this means)\b/i;
+const CONCLUSION_HEADING = "Conclusion";
+// Only links whose anchor text carries no meaning: empty text, the URL itself,
+// or a generic pointer. Descriptive anchors are left alone.
+const GENERIC_ANCHOR = /^(?:click here|here|read more|read this|this|this link|link|learn more|more|more info|more information|see more|view|check|go)$/i;
+function unhelpfulAnchors(body) {
+  let bare = 0, generic = 0;
+  for (const m of (body || "").matchAll(/\[([^\]]*)\]\(([^)]*)\)/g)) {
+    const label = m[1].trim();
+    if (!label || /^https?:\/\//i.test(label) || label === m[2].trim()) bare++;
+    else if (GENERIC_ANCHOR.test(label)) generic++;
+  }
+  for (const m of (body || "").matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const label = m[1].replace(/<[^>]+>/g, "").trim();
+    if (!label) bare++;
+    else if (GENERIC_ANCHOR.test(label)) generic++;
+  }
+  const bits = [];
+  if (bare) bits.push(`${bare} bare URL${bare > 1 ? "s" : ""}`);
+  if (generic) bits.push(`${generic} “click here”-style anchor${generic > 1 ? "s" : ""}`);
+  return { n: bare + generic, why: bits.join(" and ") };
+}
+const hasConclusion = (body) => {
+  const heads = parseHeadings(body).map((h) => h.text);
+  const blocks = (body || "").split(/\n\s*\n/).map((b) => stripMdHtml(b).replace(/\s+/g, " ").trim());
+  const tail = blocks.slice(-3).join(" ").slice(0, 900);
+  return heads.some((h) => CONCLUSION_RE.test(h)) || CONCLUSION_RE.test(tail);
+};
+// Turn an existing section heading into the question a reader would ask —
+// starting points for the FAQ block rather than invented Q&A.
+function questionFromBody(body, i) {
+  const hs = parseHeadings(body).map((h) => h.text).filter((h) => h && !isFaqHeading(h) && !CONCLUSION_RE.test(h));
+  const h = hs[i];
+  if (!h) return null;
+  const t = h.replace(/[?.!]+$/, "").trim();
+  if (t.length > 70) return null;
+  const lower = t[0].toLowerCase() + t.slice(1);
+  // "How to test a switch" is a topic, not a question — make it one.
+  const howTo = t.match(/^how to\s+(.{3,60})$/i);
+  if (howTo) return `How do I ${lower(howTo[1])[0] === "h" ? lower(howTo[1]) : howTo[1].toLowerCase()}?`;
+  const why = t.match(/^why\s+(.{3,60})$/i);
+  if (why) return `Why ${why[1][0].toLowerCase() + why[1].slice(1)}?`;
+  // Only keep a wh-open heading as a question if it actually contains a verb.
+  if (/^(how|what|why|when|where|which|who|can|should|do|does|is|are|will)\b/i.test(t) && /\b(is|are|do|does|can|could|will|would|should|has|have|did|was|were)\b/i.test(t))
+    return t + "?";
+  // Otherwise it's a noun phrase ("Costs", "What you get") — wrap it.
+  const bare = t.replace(/^(?:what|which|why|how)\s+/i, "");
+  if (!bare || bare === t && /^(?:what|which|why|how)$/i.test(t)) return null;
+  return `What about ${bare[0].toLowerCase() + bare.slice(1)}?`;
 }
 
 /* ---------- Meters / rendering / score ---------- */
@@ -506,8 +660,10 @@ function tightenSentence(raw) {
     const re = new RegExp("\\b" + escRe(w) + "\\b", "gi");
     if (re.test(t)) {
       ops.push(`“${w}” → “${r}”`);
+      // r may be "" for a pure deletion — re-capitalise the next word so
+      // "…as we all know, Tests…" doesn't come back lowercased.
       t = t.replace(new RegExp("\\b" + escRe(w) + "\\b", "gi"),
-        (m) => (/^[A-Z]/.test(m) ? r[0].toUpperCase() + r.slice(1) : r));
+        (m) => (/^[A-Z]/.test(m) && r ? r[0].toUpperCase() + r.slice(1) : r));
     }
   }
   if (/^(it is important to note that|it goes without saying that|as we all know,|in this day and age,|needless to say,|in today's fast-paced world,)\s*/i.test(t)) {
@@ -586,7 +742,7 @@ function shortenFix(raw, maxWords) {
 function suggestTitle(title, kw) {
   const R = RULES.rules.title;
   let t = title.trim().replace(/\s+/g, " ");
-  const hasKw = kw && t.toLowerCase().includes(kw.toLowerCase());
+  const hasKw = hasKeyword(t, kw);
   if (kw && !hasKw) t = `${kw[0].toUpperCase() + kw.slice(1)}: ${t}`.replace(/^:+/, "");
   if (!/\d/.test(t) && t) t = t; // don't force numbers; flag only
   if (t.length > R.maxChars) t = smartTrim(t, R.maxChars);
@@ -624,13 +780,21 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
   if (summary.trim() || title.trim()) {
     const base = summary.trim() || `${stripMdHtml(body).split(/\s+/).slice(0, 24).join(" ")}…`;
     let s = base;
-    if (kw && !base.toLowerCase().includes(kw.toLowerCase()) && kw) s = `${kw[0].toUpperCase() + kw.slice(1)} — ${s}`;
+    if (kw && !hasKeyword(base, kw) && kw) s = `${kw[0].toUpperCase() + kw.slice(1)} — ${s}`;
     s = smartTrim(s, R.summary.maxChars);
     if (!/[.!?……]$/.test(s) && s.length > 40) s = s.replace(/…$/, "") + ".";
     if (s && s !== summary.trim()) push("Summary rewrite (meta description)", `~${R.summary.minChars}–${R.summary.maxChars} chars, keyphrase + benefit + reason to click.`, s, null, true, "summary-len");
+    // A summary with no reason to click: append a plain CTA rather than
+    // rewriting the author's sentence — the benefit/claim stays theirs.
+    if (summary.trim() && !CTA_RE.test(summary)) {
+      const tail = `${summary.trim().replace(/[.\s…]+$/, "")}. ${cap1(CTA_SAMPLES[0])}.`;
+      if (tail.length <= R.summary.maxChars) push("Summary: add a reason to click", "Meta descriptions convert better when they promise something. Append a short CTA.", tail, null, true, "summary-cta");
+    }
   }
   if (excerpt.trim() && summary.trim() && stripMdHtml(excerpt).toLowerCase() === stripMdHtml(summary).toLowerCase())
     push("Excerpt rewrite (de-duplicate)", "Don't repeat the summary — tease instead.", smartTrim("Inside: " + excerpt.trim().replace(/^inside:\s*/i, ""), R.excerpt.maxChars), null, true, "excerpt-len");
+  else if (excerpt.trim() && summary.trim() && excerptSharesWith(summary, excerpt))
+    push("Excerpt rewrite (de-duplicate)", "Over 70% of the summary's words — a listing page will show the same sentence twice. Tease a different angle.", smartTrim("Inside: " + excerpt.trim().replace(/^inside:\s*/i, ""), R.excerpt.maxChars), null, true, "excerpt-dup2");
   else if (excerpt.trim() && excerpt.trim().length > R.excerpt.maxChars)
     push("Excerpt trim", "Keep the hook inside the card cutoff.", smartTrim(excerpt.trim(), R.excerpt.maxChars), null, true, "excerpt-len");
 
@@ -657,7 +821,7 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
           [hashes + " What it is", hashes + " Why it matters", hashes + " How to do it", hashes + " Mistakes to avoid", hashes + " FAQ"].join("\n"), null, true, "body-h");
       }
     }
-    if (kw && !heads.some(h => h.text.toLowerCase().includes(kw.toLowerCase())))
+    if (kw && !heads.some(h => hasKeyword(h.text, kw)))
       push("Heading idea", "Give crawlers one keyword-bearing section heading.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`, null, true, "body-hkw");
     const { internal, external } = parseLinks(body, R.body.siteDomain);
     if (!internal.length) {
@@ -671,6 +835,25 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
       if (claims.length) push("Citation idea", "Statistics and strong claims need backing — pin a source to the exact sentence that makes the claim.",
         claims.join("\n"), null, true, "body-el");
       else push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.", null, true, "body-el");
+    }
+    // Scannable structure / completeness cards for long drafts.
+    if (bw >= (R.body.minWordsForList || 400) && countListLines(body) < 3) {
+      const cand = [...new Set(heads.map((h) => h.text))].filter((h) => !/^(faq|frequently asked)/i.test(h)).slice(0, 2);
+      push("Add a list", `${bw} words with no bullets or table. Pick a section and turn its options, steps or specs into a list — the easiest readability win in the draft.`,
+        (cand.length ? cand : ["Key points"]).map((h) => `- ${h}: first point\n- second point\n- third point`).join("\n\n"), null, true, "body-list");
+    }
+    if (bw >= (R.body.minWordsForFaq || 500) && !heads.some((h) => isFaqHeading(h.text)) && !FAQ_HEAD_RE.test(body)) {
+      const qs = [questionFromBody(body, 0), questionFromBody(body, 1), questionFromBody(body, 2)].filter(Boolean);
+      push("Add an FAQ", `Past ~${R.body.minWordsForFaq || 500} words a Q&A block is the format most likely to earn a featured snippet. ${qs.length ? "Starting points from your own sections:" : ""}`,
+        (qs.length ? qs : [hashes + " FAQ\n\n**What is it?** One or two sentences.\n\n**Who is it for?** One or two sentences.\n\n**How much does it cost?** One or two sentences."]).join("\n\n"), null, true, "body-faq");
+    }
+    if (bw >= (R.body.minWordsForConclusion || 400) && !hasConclusion(body))
+      push("Add a conclusion", "Close with the takeaway: what this means, who should care, what to do next. It's also the natural place to restate the keyphrase.",
+        `${hashes} ${CONCLUSION_HEADING}\n\nSum the piece in two or three sentences, name who it's for, and give one concrete next step.`, null, true, "body-concl");
+    if (bw > 0) {
+      const bad = unhelpfulAnchors(body);
+      if (bad.n) push("Descriptive link anchors", `${bad.why.replace(/^\w/, c => c.toUpperCase())} — the anchor text is the signal, so name what the reader gets.`,
+        "[what the reader gets](https://example.com/page)", null, true, "body-anchor");
     }
     const longS = rawSentences(body).filter((s) => words(s).length > R.body.maxSentenceWords).slice(0, 2);
     longS.forEach((s) => {
@@ -782,6 +965,33 @@ const phraseMatches = (text, phrase) => {
   while ((m = re.exec(text)) !== null) { out.push(m[0]); if (out.length > 40) break; }
   return out;
 };
+// Quote the offending characters in place, marked ⟦like this⟧, so a card says
+// exactly which bit of the draft the button will change — and nothing else.
+const quoteAt = (text, index, len, pad = 24) => {
+  const start = Math.max(0, index - pad), end = Math.min(text.length, index + len + pad);
+  const before = stripMdHtml(text.slice(start, index)).replace(/\s+/g, " ").trim();
+  const after = stripMdHtml(text.slice(index + len, end)).replace(/\s+/g, " ").trim();
+  return (start > 0 ? "…" : "") + before + "⟦" + text.slice(index, index + len) + "⟧" + after + (end < text.length ? "…" : "");
+};
+// First N in-draft quotes for a pattern, as one display string.
+const quotePattern = (text, re, n = 3, pad = 24) => {
+  const out = [];
+  const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+  let m;
+  while ((m = rx.exec(text)) !== null && out.length < n) { out.push(quoteAt(text, m.index, m[0].length, pad)); if (m[0] === "") rx.lastIndex++; }
+  return out.join("   ");
+};
+// Quote up to N whole sentences containing a pattern.
+const quoteSentencesWith = (text, re, n = 2) => {
+  const out = [];
+  for (const s of rawSentences(text)) {
+    if (!re.test(s)) continue;
+    const plain = stripMdHtml(s).replace(/\s+/g, " ").trim();
+    out.push("“" + smartTrim(plain, 100) + "”");
+    if (out.length >= n) break;
+  }
+  return out.join(" ");
+};
 
 const WORDY_FIXES = [ // [wordy phrase, concise replacement]
   ["due to the fact that", "because"], ["in order to", "to"],
@@ -797,6 +1007,40 @@ const WORDY_FIXES = [ // [wordy phrase, concise replacement]
   ["end result", "result"], ["added bonus", "bonus"],
   ["absolutely essential", "essential"], ["basic fundamentals", "fundamentals"],
   ["could possibly", "could"], ["might possibly", "might"], ["very unique", "unique"],
+  ["a couple of", "two"], ["a few of", "several"], ["a number of", "several"],
+  ["at the present time", "now"], ["at the moment", "now"], ["for the time being", "for now"],
+  ["in the process of", ""], ["with regard to", "about"], ["with respect to", "about"],
+  ["in terms of", "for"], ["in relation to", "about"], ["as a means of", "to"],
+  ["on the basis of", "by"], ["for the purpose of", "to"], ["in an effort to", "to"],
+  ["with the exception of", "except"], ["in the absence of", "without"],
+  ["a sufficient amount of", "enough"], ["a large amount of", "much"], ["a small amount of", "a little"],
+  ["the majority of", "most"], ["a majority of", "most"], ["the vast majority of", "most"],
+  ["prior to", "before"], ["subsequent to", "after"], ["in the aftermath of", "after"],
+  ["owing to the fact that", "because"], ["thanks to the fact that", "because"],
+  ["it is worth noting that", "note that"], ["it is worth mentioning that", "note that"],
+  ["it should be noted that", "note that"], ["it is important to remember that", "remember"],
+  ["make a decision", "decide"], ["take into consideration", "consider"], ["take into account", "consider"],
+  ["give consideration to", "consider"], ["come up with", "develop"], ["run a test", "test"],
+  ["conduct an investigation", "investigate"], ["perform an analysis", "analyse"],
+  ["provide assistance to", "help"], ["give rise to", "cause"], ["bring about", "cause"],
+  ["carry out", "do"], ["set forth", "explain"],
+  ["on a regular basis", "regularly"], ["on a daily basis", "daily"], ["on a weekly basis", "weekly"],
+  ["in a timely manner", "promptly"], ["in an effective manner", "effectively"],
+  ["at the end of the day", "ultimately"], ["when all is said and done", "ultimately"],
+  ["in the final analysis", "ultimately"],
+  ["as a whole", "overall"], ["for the most part", "mostly"], ["to some extent", "somewhat"],
+  ["a great deal of", "much"], ["a great number of", "many"], ["a great many", "many"],
+  ["no less than", "at least"], ["more often than not", "usually"],
+  ["in all likelihood", "probably"],
+  ["play a role in", "contribute to"], ["have a hand in", "contribute to"],
+  ["in the wake of", "after"], ["in the face of", "despite"], ["in spite of", "despite"],
+  ["regardless of the fact that", "although"],
+  ["aimed at", "for"],
+  ["liable to", "likely to"], ["prone to", "likely to"],
+  ["first-class", "excellent"], ["second-to-none", "excellent"], ["top-notch", "excellent"],
+  ["state-of-the-art", "advanced"], ["cutting-edge", "new"], ["next-generation", "new"],
+  ["game-changing", "major"], ["world-class", "leading"], ["one-of-a-kind", "unique"],
+  ["seamlessly", "smoothly"], ["completely eliminate", "remove"],
 ];
 const TYPO_BASE = { // hand-picked core (wins on conflict with the dictionary file)
   alot: "a lot", teh: "the", wich: "which", recieve: "receive", seperate: "separate",
@@ -817,25 +1061,58 @@ const typoRight = (m) => {
   const right = TYPO_FIXES[m.toLowerCase()];
   return /^[A-Z]/.test(m) ? right[0].toUpperCase() + right.slice(1) : right;
 };
-const GRAMMAR_FIXES = [ // deterministic grammar slips
+const GRAMMAR_FIXES = [ // deterministic grammar slips (misspellings live in typos.js)
   ["should of", "should have"], ["could of", "could have"], ["would of", "would have"],
   ["must of", "must have"], ["might of", "might have"], ["your welcome", "you're welcome"],
+  ["there house", "their house"], ["their not", "they're not"], ["there going", "they're going"],
+  ["its' own", "its own"], ["it's own", "its own"], ["its a", "it's a"],
+  ["apart of", "a part of"], ["more easier", "easier"], ["less easier", "easier"],
+  ["most highest", "highest"], ["most biggest", "biggest"],
 ];
 const VERY_MAP = { // "very + weak adjective" -> single stronger word
   "very good": "excellent", "very bad": "terrible", "very big": "huge", "very small": "tiny",
   "very fast": "rapid", "very important": "crucial", "very clear": "obvious",
   "very sure": "certain", "very tired": "exhausted", "very happy": "delighted",
+  "very easy": "effortless", "very hard": "difficult", "very difficult": "demanding",
+  "very interesting": "compelling", "very nice": "pleasant",
+  "very funny": "hilarious", "very strange": "peculiar", "very simple": "straightforward",
+  "very different": "markedly different", "very common": "widespread", "very popular": "in-demand",
+  "very expensive": "costly", "very cheap": "affordable", "very safe": "secure",
+  "very useful": "valuable", "very powerful": "formidable", "very beautiful": "striking",
+  "very quiet": "hushed", "very quick": "swift", "very wide": "expansive",
+  "very old": "ageing", "very young": "youthful", "very close": "intimate",
+  "very careful": "cautious", "very serious": "grave", "very plain": "simple",
+  "very modern": "contemporary", "very natural": "organic", "very fair": "impartial",
+  "very honest": "candid", "very generous": "lavish", "very patient": "steadfast",
+  "very reliable": "dependable", "very flexible": "adaptable", "very stable": "resilient",
 };
 const WEAK_ALTS = { // vague words -> stronger options (shown, not auto-applied)
   good: ["strong", "solid", "compelling"], bad: ["poor", "weak", "flawed"],
   nice: ["memorable", "refined", "pleasant"], big: ["major", "substantial"],
   small: ["minor", "modest"], "a lot": ["many", "much"],
   thing: ["name the specifics"], things: ["name the specifics"], stuff: ["details", "material"],
+  great: ["excellent", "outstanding"],
+  happy: ["delighted", "pleased"], sad: ["disappointed", "dejected"], angry: ["furious", "irritated"],
+  scary: ["alarming", "unnerving"], funny: ["amusing", "comic"], boring: ["tedious", "uninspired"],
+  interesting: ["compelling", "illuminating"], important: ["critical", "decisive"],
+  difficult: ["demanding", "formidable"], easy: ["effortless", "straightforward"],
+  get: ["obtain", "secure", "acquire"], show: ["demonstrate", "reveal", "prove"],
+  make: ["create", "produce", "build"], use: ["employ", "deploy"], help: ["support", "enable"],
+  problem: ["issue", "obstacle"], idea: ["concept", "notion"],
+  "kind of": ["somewhat", "arguably"], "sort of": ["somewhat", "arguably"],
+  awesome: ["excellent", "impressive"], pretty: ["fairly", "quite"],
+  tiny: ["minimal", "slight"], slow: ["gradual", "sluggish"],
 };
-const HEDGES = ["in my opinion", "i think", "i believe", "sort of", "kind of", "perhaps", "possibly"];
+const HEDGES = ["in my opinion", "i think", "i believe", "sort of", "kind of", "perhaps", "possibly",
+  "it seems", "it appears", "seems like", "appears to", "arguably", "to some extent",
+  "i feel like", "i guess", "i suppose", "maybe", "more or less", "to a certain extent",
+  "it could be argued that", "one might argue", "there is a chance", "as far as we know",
+  "if we're being honest", "not to be dramatic", "we may have", "it may be"];
 const STOPWORDS = new Set(("the,a,an,and,or,but,of,to,in,on,for,with,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,have,has,had,do,does,did,this,that,these,those,it,its,they,their,them,we,our,you,your,he,she,his,her,not,no,more,most,than,then,so,such,when,where,which,who,what,how,all,any,each,other,into,over,after,before,between,through,during,about,up,out,off,if,else,while,because,until,just,also,even,still,already,very,quite,rather,really,there,here,been,being,said,says,like,well,much,many,own,same,only,first,second,new,used,using,often,across,within,without,around,another,less").split(","));
 const QUALIFIERS = ["really", "just", "quite", "rather"];
-const CASUAL = ["gonna", "wanna", "kinda", "yeah", "cool", "awesome", "dumb"];
+const CASUAL = ["gonna", "wanna", "gotta", "kinda", "sorta", "yeah", "yep", "nope",
+  "cool", "dumb", "buddy", "no biggie", "legit", "epic", "chill",
+  "a ton of", "big deal", "stuff", "super", "totally", "basically", "honestly", "literally", "guys"];
 
 let currentWritingFixes = [];
 
@@ -941,9 +1218,13 @@ function analyzeWriting(body) {
   }
   // Correctness: spacing slips (apply to all at once).
   const dbl = (body.match(/ {2,}/g) || []).length;
-  if (dbl) push("Correctness", `${dbl} double space${dbl > 1 ? "s" : ""}`, "Clean up extra spacing in one click.", { find: "  ", replace: " ", all: true });
+  if (dbl) push("Correctness", `${dbl} double space${dbl > 1 ? "s" : ""}`,
+    `Collapses ${quotePattern(body, / {2,}/, 3)} — extra spaces render unpredictably in markdown.`,
+    { find: "  ", replace: " ", all: true });
   const prePunct = (body.match(/ +([,.!?;:])/g) || []).length;
-  if (prePunct) push("Correctness", "Space before punctuation", "Punctuation attaches to the previous word.", { find: "SPACE_BEFORE_PUNCT", replace: "", all: true, special: "prepunct" });
+  if (prePunct) push("Correctness", `Space before punctuation (${prePunct})`,
+    `Pulls these tight: ${quotePattern(body, / +([,.!?;:])/g, 3)} — punctuation attaches to the previous word.`,
+    { find: "SPACE_BEFORE_PUNCT", replace: "", all: true, special: "prepunct" });
   // Correctness: sentence starts with lowercase (one-click capitalize, first few).
   for (const m of (body.match(/[.!?…]\s+[a-z]/g) || []).slice(0, 5)) {
     const letter = m.slice(-1);
@@ -1055,12 +1336,13 @@ function analyzeWriting(body) {
   const quals = QUALIFIERS.flatMap((q) => phraseMatches(body, q));
   if (quals.length >= 3)
     push("Clarity", `${quals.length} qualifier words (really/just/quite/rather)`,
-      "Try deleting each — if the sentence survives, it was stronger without it.");
+      `Try deleting these: ${quotePattern(body, new RegExp("\\b(?:" + QUALIFIERS.join("|") + ")\\b", "gi"), 3)} — if the sentence survives, it was stronger without.`);
 
   // Engagement: weak words with alternatives.
   for (const [weak, alts] of Object.entries(WEAK_ALTS)) {
     const n = phraseMatches(body, weak).length;
-    if (n) push("Engagement", `Vague word: “${weak}” (${n}×)`, `Consider: ${alts.join(", ")}.`);
+    if (n) push("Engagement", `Vague word: “${weak}” (${n}×)`,
+      `${quoteSentencesWith(body, new RegExp("\\b" + escRe(weak) + "\\b", "i"), 2)} — consider: ${alts.join(", ")}.`);
   }
   // Engagement: thesaurus — most-repeated content words get synonym options
   // (natural variation reads better and avoids stuffing-like repetition).
@@ -1090,25 +1372,34 @@ function analyzeWriting(body) {
     }
     Object.entries(freq).filter(([w, n]) => n >= 4 && SYNONYMS[w])
       .sort((a, b) => b[1] - a[1]).slice(0, 3)
-      .forEach(([w, n]) => push("Engagement", `Overused: “${w}” (${n}×)`, `Vary it: ${SYNONYMS[w].join(", ")}. Natural variation reads better and avoids repetition that looks stuffed.`));
+      .forEach(([w, n]) => push("Engagement", `Overused: “${w}” (${n}×)`,
+        `${quoteSentencesWith(body, new RegExp("\\b" + escRe(w) + "\\b", "i"), 2)} — vary it: ${SYNONYMS[w].join(", ")}. Natural variation reads better and avoids repetition that looks stuffed.`));
   }
   // Engagement: sentence variety — same opener 3+ times.
   const openers = {};
+  const openerAt = {};
   for (const s of sentencesOf(body)) {
     const w = (s.match(/^[A-Za-z']+/) || [""])[0].toLowerCase();
-    if (w) openers[w] = (openers[w] || 0) + 1;
+    if (!w) continue;
+    openers[w] = (openers[w] || 0) + 1;
+    if (openerAt[w] === undefined) openerAt[w] = body.toLowerCase().indexOf(s.toLowerCase());
   }
   for (const [w, n] of Object.entries(openers))
     if (n >= 3 && sentencesOf(body).length >= 6)
-      push("Engagement", `${n} sentences start with “${w}”`, "Vary openers — flip a clause, ask a question, or merge two short sentences.");
+      push("Engagement", `${n} sentences start with “${w}”`, `Starts here: ${quotePattern(body, new RegExp("(^|[.!?…]\\s+)" + escRe(w) + "\\b", "gi"), 3, 18)} — vary openers: flip a clause, ask a question, or merge two short sentences.`);
 
   // Delivery: hedging, slang, shouting.
   const hedgeN = HEDGES.reduce((a, h) => a + phraseMatches(body, h).length, 0);
-  if (hedgeN >= 2) push("Delivery", `${hedgeN} hedging phrases`, "Hedges (“sort of”, “I think”) make claims sound unsure. Keep them only where uncertainty is real.");
+  if (hedgeN >= 2) push("Delivery", `${hedgeN} hedging phrases`,
+    `${quoteSentencesWith(body, new RegExp("\\b(?:" + HEDGES.join("|") + ")\\b", "i"), 2)} — hedges make claims sound unsure. Keep them only where the uncertainty is real.`);
   const casualFound = [...new Set(CASUAL.flatMap((c) => phraseMatches(body, c).map((m) => m.toLowerCase())))];
-  if (casualFound.length) push("Delivery", `Casual slang: ${casualFound.join(", ")}`, "Fine for a chatty blog, risky for professional pieces — swap for precise terms.");
+  const casualTotal = CASUAL.reduce((a, c) => a + phraseMatches(body, c).length, 0);
+  // One stray "basically" isn't a tone problem; a sprinkle of them is.
+  if (casualFound.length >= 2 || casualTotal >= 3) push("Delivery", `Casual slang: ${casualFound.slice(0, 5).join(", ")}`,
+    `Here: ${quoteSentencesWith(body, new RegExp("\\b(?:" + CASUAL.join("|") + ")\\b", "i"), 2)} — fine for a chatty blog, risky for professional pieces. Swap for precise terms.`);
   const excl = (body.match(/!/g) || []).length;
-  if (excl >= 2) push("Delivery", `${excl} exclamation marks`, "One per article is plenty — strong words carry excitement better.");
+  if (excl >= 2) push("Delivery", `${excl} exclamation marks`,
+    `${quotePattern(body, /![a-z]*/g, 3, 26)} — one per article is plenty; strong words carry excitement better.`);
 
   return issues;
 }

@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.04-r3",
+  "version": "2026.10.04-r4",
   "updated": "2026-10-04",
   "notes": "Timeless SEO thresholds for article drafts: snippet-length limits imposed by search-result UI, structural checks (headings, links, depth), keyword-placement principles, and readability science. These change very slowly, if at all -- no feeds, no auto-updates, nothing to maintain. Tune any value and redeploy; the app follows this file. sectionLevel 3 matches the Neowin CMS (H3 section headers) -- set it to 2 for a standard H2 site and all checks, suggestions and templates follow automatically.",
   "sources": [
@@ -50,7 +50,10 @@
       "minInternalLinks": 1,
       "minExternalLinks": 1,
       "transitionWordsMinShare": 0.2,
-      "passiveVoiceMaxShare": 0.15
+      "passiveVoiceMaxShare": 0.15,
+      "minWordsForList": 400,
+      "minWordsForFaq": 500,
+      "minWordsForConclusion": 400
     },
     "readability": {
       "fleschGood": 60,
@@ -58,19 +61,40 @@
     }
   },
   "powerWords": [
-    "ultimate",
-    "proven",
-    "essential",
-    "complete",
-    "best",
-    "guide",
-    "how",
-    "why",
-    "new",
-    "free",
-    "easy",
-    "fast",
-    "secret",
-    "top"
+    "absolute", "advanced", "affordable", "alluring", "alternative", "amazing",
+    "announced", "approved", "astonishing", "attractive", "authentic", "awesome",
+    "backed", "banned", "bargain", "beautiful", "beginner", "benchmark",
+    "best", "blissful", "blueprint", "bold", "bonus", "brave",
+    "breaking", "breakthrough", "brilliant", "budget", "celebrated", "certified",
+    "challenge", "cheap", "checklist", "classic", "clever", "colossal",
+    "comparison", "complete", "comprehensive", "confirmed", "conquer", "coveted",
+    "crazy", "critical", "dazzling", "deal", "decoded", "delight",
+    "delightful", "detailed", "definitive", "discount", "dominant", "dynamic",
+    "easy", "effortless", "elite", "empowering", "envy", "epic",
+    "essential", "exceptional", "exciting", "exclusive", "exotic", "expert",
+    "explained", "exposed", "fast", "fearless", "first", "flagship",
+    "flawless", "foolproof", "forceful", "formula", "framework", "free",
+    "fresh", "futuristic", "gargantuan", "genius", "giant", "glamorous",
+    "glorious", "groundbreaking", "guaranteed", "guide", "hacks", "hands",
+    "handy", "heroic", "hidden", "honest", "how", "huge",
+    "iconic", "incredible", "insider", "instant", "killer", "latest",
+    "lavish", "leaked", "legendary", "limited", "lucrative", "luminous",
+    "magnetic", "majestic", "mammoth", "marvelous", "massive", "master",
+    "mesmerizing", "method", "miraculous", "mistakes", "monumental", "myths",
+    "new", "noteworthy", "now", "official", "opulent", "outstanding",
+    "outrageous", "painless", "peerless", "perfect", "personal", "phenomenal",
+    "picturesque", "playbook", "plush", "popular", "powerful", "practical",
+    "prized", "pro", "profitable", "prominent", "promising", "proven",
+    "quick", "quirky", "radiant", "rapid", "rare", "rave",
+    "refined", "relentless", "remarkable", "results", "revealed", "review",
+    "revolutionary", "roadmap", "robust", "save", "savvy", "seamless",
+    "secret", "secrets", "sensational", "shocking", "simple", "simplified",
+    "sizzling", "skyrocket", "sleek", "smart", "smarter", "spectacular",
+    "splendid", "standout", "step", "steps", "straightforward", "strategy",
+    "sturdy", "sublime", "stunning", "superb", "surprising", "tested",
+    "timeless", "tips", "today", "top", "tricks", "truth",
+    "tutorial", "ultimate", "unbelievable", "unexpected", "upgrade", "urgent",
+    "verified", "versus", "warning", "what", "when", "why",
+    "winning", "worst"
   ]
 }
