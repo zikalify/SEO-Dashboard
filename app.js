@@ -1170,7 +1170,8 @@ function craftHeading(block) {
   // only if it repeats, or opens the paragraph outside of a list ("Firms like
   // Bain, Capgemini, …" are examples, never the topic). Single mentions buried
   // in lists are rejected and generation falls through to better rules.
-  const sents = plain.split(/(?<=[.!?…])\s+/);
+  // (match-based split: no lookbehind, so older browsers parse this file.)
+  const sents = plain.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [plain];
   const seqCount = (s) => (s.match(/([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)+)/g) || []).length;
   const seen = new Map();
   for (const m of plain.matchAll(/([A-Z][\w'-]*(?:(?:\s+(?:of|&|and)\s+|\s+)[A-Z][\w'-]*)+)/g)) {
@@ -1215,8 +1216,9 @@ function craftHeading(block) {
   // Fallback: compress an opening line — skipping content-free openers
   // ("The program is quite interesting…") in favour of the next informative
   // sentence. Still a draft, never final.
-  const openers = plain.split(/(?<=[.!?…])\s+/).slice(0, 3);
-  for (const sent of openers) {
+  const openers = plain.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [plain];
+  const openerList = openers.slice(0, 3);
+  for (const sent of openerList) {
     if (/^(the|this|that|these|those|it)\b.{0,25}?\b(is|are|was|were)\b\s*(quite|really|very|just|rather|pretty|fairly|so|too)?\s*(interesting|important|great|good|nice|amazing|awesome|cool|big|small|useful|helpful|key|crucial|excellent|bad)\b/i.test(sent.trim())) continue;
     const t = compressTitle(sent, 52);
     if (t.split(" ").length >= 3) return { title: t, reason: "distilled from the opening line", draft: true };
@@ -1526,3 +1528,4 @@ $("btn-reset-tags").addEventListener("click", () => { removedTags.t = []; saveRe
 loadDraft();
 loadRules();
 renderUndo();
+window.__seoReady = true;
