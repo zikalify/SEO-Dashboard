@@ -791,6 +791,58 @@ function analyzeWriting(body) {
     for (const m of phraseMatches(body, wrong))
       push("Correctness", `Grammar: “${m}”`, `The standard form is “${right}”.`, { find: m, replace: right });
 
+  // Correctness: confusables the program CAN resolve — the surrounding words
+  // prove the answer, so these get one-click fixes, not just reminders.
+  // Anything genuinely ambiguous keeps the reminder card further below.
+  const NOUN_LIST = ["team", "teams", "account", "accounts", "manager", "managers", "company", "companies", "program", "programs", "network", "networks", "system", "systems", "user", "users", "customer", "customers", "employee", "employees", "engineer", "engineers", "developer", "developers", "partner", "partners", "data", "report", "reports", "guide", "guides", "post", "posts", "article", "articles", "draft", "drafts", "organization", "organizations", "business", "businesses", "client", "clients", "project", "projects", "product", "products", "service", "services", "department", "office", "budget", "plan", "plans", "model", "models", "tool", "tools", "impact"];
+  const AUX_RE = "(?:is|are|was|were|been|will|would|can|could|shall|should|may|might|must|has|had|do|does|did)";
+  const ADJ_SAFE = "(?:good|bad|late|early|clear|likely|possible|impossible|worth|ready|true|incorrect|tired|busy|sure|welcome)";
+  const NOUNS = NOUN_LIST.join("|");
+  const capFix = (m, word) => (/^[A-Z]/.test(m) ? word[0].toUpperCase() + word.slice(1) : word);
+  // Each entry: [pattern-source, fixFn(matched)->replacement|null, explanation].
+  // Patterns are drawn so narrow that every match is certainly wrong.
+  const CONFUSABLE_FIXES = [
+    [`\\btheir\\s+${AUX_RE}\\b`, (m) => m.replace(/^their/i, (t) => capFix(t, "there")), "“their” before a verb is always “there”"],
+    [`\\bthey're\\s+(?:${NOUNS})\\b`, (m) => m.replace(/^they're/i, (t) => capFix(t, "their")), "“they're” before a noun is always “their”"],
+    [`\\bthere\\s+(?:${NOUNS})\\b`, (m) => { if (/^(is|are|was|were|time|day|moment)\b/i.test(m.split(/\s+/)[1])) return null; return m.replace(/^there/i, (t) => capFix(t, "their")); }, "“there” before a noun is “their” (existential “there” takes a verb)"],
+    [`\\byour\\s+${AUX_RE}\\b`, (m) => m.replace(/^your/i, (t) => capFix(t, "you're")), "“your” before a verb is “you're”"],
+    [`\\byou're\\s+(?:${NOUNS})\\b`, (m) => m.replace(/^you're/i, (t) => capFix(t, "your")), "“you're” before a noun is always “your”"],
+    [`\\bits\\s+(?:${AUX_RE}|${ADJ_SAFE})\\b`, (m) => m.replace(/^its/i, (t) => capFix(t, "it's")), "“its” before a verb/adjective is “it's”"],
+    [`\\bit's\\s+(?:${NOUNS})\\b`, (m) => { if (/^(time|day|moment)\b/i.test(m.split(/\s+/)[1])) return null; return m.replace(/^it's/i, (t) => capFix(t, "its")); }, "“it's” before a noun is “its” (“it's time” is the exception)"],
+    [`\\bwhose\\s+(?:${AUX_RE}|going|coming|doing|getting|working)\\b`, (m) => m.replace(/^whose/i, (t) => capFix(t, "who's")), "“whose” before a verb is “who's”"],
+    [`\\bwho's\\s+(?:${NOUNS})\\b`, (m) => m.replace(/^who's/i, (t) => capFix(t, "whose")), "“who's” before a noun is “whose”"],
+    [`\\bweather\\s+or\\s+not\\b`, (m) => m.replace(/^weather/i, (t) => capFix(t, "whether")), "“weather or not” is always “whether or not”"],
+    [`\\bloose\\s+(?:weight|game|games|match|money|job|election|it|him|her|them|us|me|mind|temper|control)\\b`, (m) => m.replace(/^loose/i, (t) => capFix(t, "lose")), "“loose weight/game/…” is “lose” (loose = not tight)"],
+    [`\\blose\\s+(?:ends?|change|fit)\\b`, (m) => m.replace(/^lose/i, (t) => capFix(t, "loose")), "“lose end/change/fit” is “loose”"],
+    [`\\bprinciple\\s+(?:engineers?|architects?|investigators?|consultants?|officers?)\\b`, (m) => m.replace(/^principle/i, (t) => capFix(t, "principal")), "a “principle engineer” is a “principal engineer” (senior person)"],
+    [`\\bprincipal\\s+(?:behind|among)\\b`, (m) => m.replace(/^principal/i, (t) => capFix(t, "principle")), "“principal behind/among” is “principle” (a rule, not a person)"],
+  ];
+  const COMPARATIVES = /^(more|less|better|worse|fewer|greater|higher|lower|larger|smaller|faster|slower|newer|older|stronger|weaker|[a-z]{3,}er)$/i;
+  const NOT_COMP = /^(other|never|ever|over|under|cover|later|together|remember|member|number|water)$/i;
+  const fixedSets = new Set();
+  CONFUSABLE_FIXES.forEach(([src, fn, why], si) => {
+    const re = new RegExp(src, "gi");
+    let m, n = 0;
+    while ((m = re.exec(body)) !== null && n < 5) {
+      const rep = fn(m[0]);
+      if (!rep || rep === m[0]) continue;
+      n++;
+      fixedSets.add(si);
+      push("Correctness", `Confusable: “${m[0]}”`, `${why} — one click fixes it.`, { find: m[0], replace: rep });
+    }
+  });
+  // Comparative + "then" → "than" ("bigger then" can only be "than").
+  {
+    const re = /\b([A-Za-z]+)\s+then\b/gi;
+    let m, n = 0;
+    while ((m = re.exec(body)) !== null && n < 5) {
+      if (!COMPARATIVES.test(m[1]) || NOT_COMP.test(m[1])) continue;
+      n++;
+      push("Correctness", "Confusable: “then” after a comparison", `“${m[1]} then” can only be “${m[1]} than” (comparisons take “than”) — one click fixes it.`, { find: m[0], replace: m[0].replace(/then$/i, (t) => (/^[A-Z]/.test(t) ? "Than" : "than")) });
+    }
+    if (n) fixedSets.add(-1);
+  }
+
   // Correctness: repeated word ("the the") — fix removes the duplicate.
   for (const m of (body.match(/\b([A-Za-z']+)\s+\1\b/gi) || []).slice(0, 10)) {
     const word = m.split(/\s+/)[0];
@@ -831,29 +883,42 @@ function analyzeWriting(body) {
       n++;
     }
   }
-  // Correctness: commonly confused words — flagged with a reminder, never
-  // auto-fixed (only you know which one you meant). One card per set, max 4.
-  const CONFUSABLES = [
-    { any: ["you're", "your"], note: "you're = you are (“you're welcome”); your = belonging to you (“your draft”)" },
-    { any: ["they're", "their", "there"], note: "they're = they are; their = belonging to them; there = that place" },
-    { any: ["it's", "its"], note: "it's = it is; its = belonging to it" },
-    { any: ["affect", "effect"], note: "affect = to influence (verb); effect = result (noun)" },
-    { any: ["than"], note: "than = comparison (“bigger than”); then = time/next (“first this, then that”) — check you didn't swap them" },
-    { any: ["lose", "loose"], note: "lose = misplace / fail to win; loose = not tight" },
-    { any: ["complement", "compliment"], note: "complement = completes; compliment = praise" },
-    { any: ["principal", "principle"], note: "principal = main person/thing; principle = rule" },
-    { any: ["cite", "sight"], note: "cite = quote as a source; sight = view (site = website needs no check)" },
-    { any: ["weather", "whether"], note: "weather = rain/shine; whether = if" },
-    { any: ["who's", "whose"], note: "who's = who is; whose = belonging to whom" },
-    { any: ["except"], note: "except = excluding (“all except Monday”); accept = receive — check you didn't swap them" },
-    { any: ["advise"], note: "advise = to counsel (verb); advice = counsel itself (noun)" },
-    { any: ["breathe"], note: "breathe = to inhale (verb); breath = one inhalation (noun)" },
+  // Correctness: commonly confused words — reminder only when nothing above
+  // auto-fixed them (only you know which one you meant otherwise).
+  // fixedSets indices align with CONFUSABLE_FIXES order groups below.
+  const CONFUSABLE_REMINDERS = [
+    { any: ["you're", "your"], skip: [3, 4], note: "you're = you are (“you're welcome”); your = belonging to you (“your draft”)" },
+    { any: ["they're", "their", "there"], skip: [0, 1, 2], note: "they're = they are; their = belonging to them; there = that place" },
+    { any: ["it's", "its"], skip: [5, 6], note: "it's = it is; its = belonging to it" },
+    { any: ["affect", "effect"], skip: [], note: "affect = to influence (verb); effect = result (noun)" },
+    { any: ["than"], skip: [-1], note: "than = comparison (“bigger than”); then = time/next (“first this, then that”) — check you didn't swap them" },
+    { any: ["lose", "loose"], skip: [10, 11], note: "lose = misplace / fail to win; loose = not tight" },
+    { any: ["complement", "compliment"], skip: [], note: "complement = completes; compliment = praise" },
+    { any: ["principal", "principle"], skip: [12, 13], note: "principal = main person/thing; principle = rule" },
+    { any: ["cite", "sight"], skip: [], note: "cite = quote as a source; sight = view (site = website needs no check)" },
+    { any: ["weather", "whether"], skip: [9], note: "weather = rain/shine; whether = if" },
+    { any: ["who's", "whose"], skip: [7, 8], note: "who's = who is; whose = belonging to whom" },
+    { any: ["except"], skip: [], note: "except = excluding (“all except Monday”); accept = receive — check you didn't swap them" },
+    { any: ["advise"], skip: [], note: "advise = to counsel (verb); advice = counsel itself (noun)" },
+    { any: ["breathe"], skip: [], note: "breathe = to inhale (verb); breath = one inhalation (noun)" },
   ];
   let confN = 0;
-  for (const c of CONFUSABLES) {
+  for (const c of CONFUSABLE_REMINDERS) {
     if (confN >= 4) break;
+    if (c.skip.some((si) => fixedSets.has(si))) continue;
     const found = c.any.filter((w) => phraseMatches(body, w).length);
-    if (found.length) { confN++; push("Correctness", `Check: ${found.join(" / ")}`, c.note + "."); }
+    if (!found.length) continue;
+    confN++;
+    // Quote the actual sentence(s) so this is a check of YOUR text, not advice.
+    const cites = [];
+    for (const s of rawSentences(body)) {
+      const plain = stripMdHtml(s).replace(/\s+/g, " ").trim();
+      if (words(plain).length < 4) continue;
+      if (found.some((w) => new RegExp(`\\b${escRe(w)}\\b`, "i").test(plain))) cites.push("“" + smartTrim(plain, 110) + "”");
+      if (cites.length >= 2) break;
+    }
+    push("Correctness", `Check in your text: ${found.join(" / ")}`,
+      (cites.length ? cites.join(" ") + " — verify against: " : "") + c.note + ".");
   }
   // Correctness: sentence fragments — no finite main verb (the "missing is").
   // Skips headings, lists, quotes, code, short interjections, and imperatives.
@@ -866,10 +931,21 @@ function analyzeWriting(body) {
     if (IMPERATIVES.test(plain)) continue;
     if (!hasFinite(stripSub(plain))) {
       if (fragN++ >= 5) break;
-      const pm = plain.match(/,?\s*(built|based|modeled|designed|aimed|focused|centered|named|called)\b/i);
-      push("Correctness", "Sentence may be missing its main verb",
-        pm ? `“…${pm[0].trim()}…” probably needs “…is ${pm[1].toLowerCase()}…”. No auto-fix here — repair the verb first, then re-check.`
-           : "No finite verb found — every sentence needs one (is/are/was/knew/built…). No auto-fix here — add the verb first.",
+      const pm = plain.match(/,?\s*(built|based|modeled|designed|aimed|focused|centered)\b/i);
+      const where = `In: “${smartTrim(plain, 140)}” — `;
+      if (pm) {
+        // Guess singular/plural from the words before the participle:
+        // "These programs, built" → are; "The program, built" → is.
+        const before = plain.slice(0, pm.index);
+        const preComma = (before.match(/([A-Za-z]+),\s*$/) || [])[1] || "";
+        const plural = /\b(these|those)\b/i.test(before.slice(-60)) ||
+          (/^[a-z]+s$/i.test(preComma) && preComma.length > 3 && !/(ss|us|news)$/i.test(preComma));
+        const cop = plural ? "are" : "is";
+        push("Correctness", "Sentence may be missing its main verb",
+          where + `“…${pm[0].trim()}…” probably needs “…${cop} ${pm[1].toLowerCase()}…”. One click inserts “${cop}” (or rewrite active — “programs build…”).`,
+          { find: pm[0], replace: pm[0].replace(new RegExp(pm[1] + "$", "i"), `${cop} ${pm[1].toLowerCase()}`) });
+      } else push("Correctness", "Sentence may be missing its main verb",
+        where + "no finite verb found — every sentence needs one (is/are/was/knew/built…). No auto-fix here — add the verb first.",
         null);
     }
   }
