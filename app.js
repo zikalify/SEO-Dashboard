@@ -1322,13 +1322,30 @@ function hashtagify(wordsArr, digits) {
 function extractTagData(body, title, kw) {
   // Join with a period so entities can't span the title/body boundary ("GPT-6" + "Intro words" ≠ "GPT-6 Intro").
   const plain = stripMdHtml((((title || "").trim().replace(/[.?!…]+$/, "") + ". ") + (body || ""))).replace(/\s+/g, " ").trim();
-  const seqCount = (s) => (s.match(/([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)+)/g) || []).length;
-  const listSent = (idx) => {
-    const s0 = Math.max(0, plain.lastIndexOf(".", idx - 1), plain.lastIndexOf("?", idx - 1), plain.lastIndexOf("!", idx - 1));
+  // Is this occurrence a member of an enumeration ("such as A, B and C")?
+  // Positional, not sentence-wide: cue words or comma/and-joins immediately
+  // around it. "…want the European Commission" after a list is NOT a member.
+  const CONN = /^[\s,]*(and|or)?[\s,]*(the|a|an)?[\s,]*$/i;
+  const capSeqsIn = (clause) => {
+    const out = [], re = /[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*/g;
+    let m; while ((m = re.exec(clause)) !== null) out.push({ t: m[0], i: m.index });
+    return out;
+  };
+  const listMember = (idx, len) => {
+    const terms = [".", "?", "!", ";", ":"];
+    let s = 0;
+    for (const t of terms) { const i = plain.lastIndexOf(t, idx - 1); if (i > s) s = i + 1; }
     let e = plain.length;
-    for (const p of [".", "?", "!"]) { const i = plain.indexOf(p, idx); if (i !== -1 && i < e) e = i; }
-    const sent = plain.slice(s0, e);
-    return /(like|including|such as)\b/i.test(sent) && seqCount(sent) >= 3;
+    for (const t of terms) { const i = plain.indexOf(t, idx); if (i !== -1 && i < e) e = i + 1; }
+    const clause = plain.slice(s, e);
+    const seqs = capSeqsIn(clause);
+    const me = seqs.findIndex((x) => idx >= s + x.i && idx < s + x.i + x.t.length);
+    if (me === -1) return false;
+    if (/(like|including|such as|e\.g\.)\s+(the\s+|a\s+|an\s+)?[A-Za-z'&-]*$/i.test(clause.slice(0, seqs[me].i))) return true;
+    const prev = seqs[me - 1], next = seqs[me + 1];
+    if (prev && CONN.test(clause.slice(prev.i + prev.t.length, seqs[me].i))) return true;
+    if (next && CONN.test(clause.slice(seqs[me].i + seqs[me].t.length, next.i))) return true;
+    return false;
   };
   // Product + version combos: "Sonnet 5.5", "Claude Sonnet 5.5", "GPT-6".
   const combos = [];
@@ -1356,7 +1373,7 @@ function extractTagData(body, title, kw) {
       if (occ.filter((o) => /^[A-Z]/.test(o)).length / occ.length <= 0.5) continue;
       ent.set(t, (ent.get(t) || 0) + occ.length);
     } else {
-      if (listSent(m.index)) continue;
+      if (listMember(m.index, m[0].length)) continue;
       ent.set(t, (ent.get(t) || 0) + 1);
     }
   }

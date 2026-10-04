@@ -47,7 +47,7 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
 .tagbox { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .tagbox .hint { width: 100%; margin: 0; }
-.chip { display: inline-flex; align-items: center; gap: 2px; background: var(--panel-2); border: 1px solid var(--link); color: var(--link); border-radius: 99px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; background: var(--panel-2); border: 1px solid var(--link); color: var(--link); border-radius: 99px; padding: 4px 12px; font-size: 12.5px; }
 .chip.tag { color: var(--text); border-color: var(--line); }
 .chip button { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 4px; }
 .chip button:hover { color: var(--fail); }
