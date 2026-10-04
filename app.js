@@ -702,14 +702,11 @@ function renderStats({ kw, title, summary, excerpt, body }, grade) {
   const lvl = RULES.rules.body.sectionLevel || 2;
   const dens = kw && bw ? (keywordCount(body, kw) / bw * 100) : null;
   const f = flesch(body);
-  const { internal, external } = parseLinks(body, RULES.rules.body.siteDomain);
   const rows = [
     ["Focus keyphrase", kw ? esc(kw) + ` · ${keywordCount(title + " " + summary + " " + body, kw)}× total` : "<span class='hint'>not set</span>"],
     ["Words", `${bw} · ${sentencesOf(body).length} sentences · ${parseHeadings(body).filter(h => h.level === lvl).length} H${lvl}s`],
     ["Keyword repetition (body)", dens === null ? "<span class='hint'>—</span>" : `${dens.toFixed(1)}% exact-match ${meter(Math.min(100, dens / 3 * 100), dens <= RULES.rules.body.keywordDensityGoodMax ? "" : dens <= RULES.rules.body.keywordDensityMax ? "warn" : "bad")} (over ~${(RULES.rules.body.keywordDensityGoodMax * 100).toFixed(0)}% = review for stuffing; density itself is not a ranking factor)`],
     ["Readability", f === null ? "<span class='hint'>need ~30+ words</span>" : `Flesch ${Math.round(f)} ${meter(f, f >= RULES.rules.readability.fleschGood ? "" : f >= RULES.rules.readability.fleschOkay ? "warn" : "bad")} (${f >= RULES.rules.readability.fleschGood ? "good" : f >= RULES.rules.readability.fleschOkay ? "okay" : "dense"})` + (grade !== null && grade !== undefined ? ` · grade ~${Math.max(1, Math.round(grade))} · ${Math.max(1, Math.round(bw / 200))} min read` : "")],
-    ["Links", `${internal.length} internal · ${external.length} external`],
-    ["Rules", `SEO rules v${esc(RULES.version || "?")} (thresholds updated ${esc(RULES.updated || "?")})`],
   ];
   els.stats.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
 }
@@ -842,6 +839,26 @@ function analyzeWriting(body) {
     }
     if (n) fixedSets.add(-1);
   }
+  // "their + -ing" is genuinely ambiguous: possessive ("their meeting notes")
+  // or wrong ("their running late" → they're). What follows decides it — a
+  // noun/determiner means possessive (silent); anything else gets a targeted
+  // check quoting the sentence.
+  {
+    const SING_NOUNS = new Set(["room", "lunch", "dinner", "breakfast", "call", "note", "list", "shift", "trip", "visit", "stay", "review", "meeting"]);
+    const TIME_PLACE = new Set(["tomorrow", "today", "tonight", "yesterday", "now", "soon", "later", "here", "there"]);
+    const re = /\btheir\s+([a-z]+ing)\b/gi;
+    let m, n = 0;
+    while ((m = re.exec(body)) !== null && n < 3) {
+      const nxt = ((body.slice(m.index + m[0].length).match(/^\s+([a-z]+)/i) || [])[1] || "").toLowerCase();
+      if (/^(the|a|an|my|your|his|her|its|our|their)$/i.test(nxt)) continue;
+      if (NOUN_LIST.includes(nxt) || SING_NOUNS.has(nxt) || TIME_PLACE.has(nxt)) continue;
+      if (/^[a-z]{4,}s$/i.test(nxt) && !/(ss|us)$/i.test(nxt)) continue; // plural noun → possessive
+      n++;
+      const sent = rawSentences(body).find((s) => new RegExp(`\\btheir\\s+${m[1]}\\b`, "i").test(s));
+      const cite = sent ? `In: “${smartTrim(stripMdHtml(sent).replace(/\s+/g, " ").trim(), 120)}” — ` : "";
+      push("Correctness", `Check in your text: their “…${m[1]}…”`, `${cite}if they are doing it, it’s “they’re”; if it belongs to them, “their” is right.`);
+    }
+  }
 
   // Correctness: repeated word ("the the") — fix removes the duplicate.
   for (const m of (body.match(/\b([A-Za-z']+)\s+\1\b/gi) || []).slice(0, 10)) {
@@ -883,21 +900,17 @@ function analyzeWriting(body) {
       n++;
     }
   }
-  // Correctness: commonly confused words — reminder only when nothing above
-  // auto-fixed them (only you know which one you meant otherwise).
-  // fixedSets indices align with CONFUSABLE_FIXES order groups below.
+  // Correctness: commonly confused words — reminders ONLY for suspicious shapes
+  // (rare words, or "their + -ing" where what follows decides it). Correct
+  // usages stay silent: your/its/who's + nouns, you're/it's + verbs, and bare
+  // whether/weather/than are right 99%+ of the time, and the auto-fixes above
+  // already catch the wrong ones.
   const CONFUSABLE_REMINDERS = [
-    { any: ["you're", "your"], skip: [3, 4], note: "you're = you are (“you're welcome”); your = belonging to you (“your draft”)" },
-    { any: ["they're", "their", "there"], skip: [0, 1, 2], note: "they're = they are; their = belonging to them; there = that place" },
-    { any: ["it's", "its"], skip: [5, 6], note: "it's = it is; its = belonging to it" },
     { any: ["affect", "effect"], skip: [], note: "affect = to influence (verb); effect = result (noun)" },
-    { any: ["than"], skip: [-1], note: "than = comparison (“bigger than”); then = time/next (“first this, then that”) — check you didn't swap them" },
     { any: ["lose", "loose"], skip: [10, 11], note: "lose = misplace / fail to win; loose = not tight" },
     { any: ["complement", "compliment"], skip: [], note: "complement = completes; compliment = praise" },
     { any: ["principal", "principle"], skip: [12, 13], note: "principal = main person/thing; principle = rule" },
     { any: ["cite", "sight"], skip: [], note: "cite = quote as a source; sight = view (site = website needs no check)" },
-    { any: ["weather", "whether"], skip: [9], note: "weather = rain/shine; whether = if" },
-    { any: ["who's", "whose"], skip: [7, 8], note: "who's = who is; whose = belonging to whom" },
     { any: ["except"], skip: [], note: "except = excluding (“all except Monday”); accept = receive — check you didn't swap them" },
     { any: ["advise"], skip: [], note: "advise = to counsel (verb); advice = counsel itself (noun)" },
     { any: ["breathe"], skip: [], note: "breathe = to inhale (verb); breath = one inhalation (noun)" },

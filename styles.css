@@ -100,5 +100,3 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 
 .sug .copy { font-size: 12px; padding: 5px 9px; }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 13.5px; }
 .stats dt { color: var(--muted); } .stats dd { margin: 0; font-variant-numeric: tabular-nums; }
-.foot { color: var(--muted); font-size: 12.5px; padding-bottom: 26px; }
-.foot code { color: var(--text); }
