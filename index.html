@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SEO Article Review — live SEO draft checker</title>
+<meta name="description" content="Paste a title, summary, excerpt and article draft. Get live SEO feedback and concrete rewrite suggestions. Rules load from a live seo-rules.json file so thresholds stay up to date." />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div>
+      <h1>SEO Article Review</h1>
+      <p class="sub">Paste your draft &rarr; get live SEO feedback + rewrite suggestions. Nothing leaves your browser.</p>
+    </div>
+    <div class="rules-card" id="rulesCard" aria-live="polite">
+      <div class="rules-row">
+        <span class="dot" id="rulesDot"></span>
+        <span id="rulesStatus">Loading SEO rules…</span>
+      </div>
+      <div class="rules-meta" id="rulesMeta"></div>
+      <div class="rules-actions">
+        <button id="refreshRules" class="btn small" type="button">Refresh rules</button>
+        <details class="rules-settings">
+          <summary>Custom rules URL</summary>
+          <p class="hint">Point the app at any hosted JSON with the same shape as <code>seo-rules.json</code> (e.g. a gist). Stored only in this browser.</p>
+          <div class="row">
+            <input id="customRulesUrl" type="url" placeholder="https://…/seo-rules.json" spellcheck="false" />
+            <button id="saveRulesUrl" class="btn small" type="button">Save</button>
+            <button id="clearRulesUrl" class="btn small ghost" type="button">Reset</button>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap grid">
+  <section class="panel inputs">
+    <h2>Your draft <span class="hint-inline">— all fields optional, feedback is live</span></h2>
+
+    <label class="field">
+      <span class="field-head"><span>Focus keyphrase <em>(optional, but unlocks keyword checks)</em></span>
+      <span class="count" id="c-keyphrase"></span></span>
+      <input id="in-keyphrase" type="text" placeholder="e.g. budget mechanical keyboards" autocomplete="off" />
+    </label>
+
+    <label class="field">
+      <span class="field-head"><span>Title</span><span class="count" id="c-title"></span></span>
+      <input id="in-title" type="text" placeholder="e.g. 7 Proven Budget Mechanical Keyboards Worth Buying in 2026" autocomplete="off" />
+      <span class="bar"><span id="bar-title"></span></span>
+      <span class="field-msg" id="msg-title"></span>
+    </label>
+
+    <label class="field">
+      <span class="field-head"><span>Article summary <em>(used as meta description)</em></span><span class="count" id="c-summary"></span></span>
+      <textarea id="in-summary" rows="3" placeholder="1–2 sentences that will appear under your title in Google. Include the keyphrase, a benefit, and a reason to click." spellcheck="true" lang="en"></textarea>
+      <span class="bar"><span id="bar-summary"></span></span>
+      <span class="field-msg" id="msg-summary"></span>
+    </label>
+
+    <label class="field">
+      <span class="field-head"><span>Excerpt <em>(listing / teaser snippet)</em></span><span class="count" id="c-excerpt"></span></span>
+      <textarea id="in-excerpt" rows="2" placeholder="Short teaser shown on homepages, newsletters and cards." spellcheck="true" lang="en"></textarea>
+      <span class="bar"><span id="bar-excerpt"></span></span>
+      <span class="field-msg" id="msg-excerpt"></span>
+    </label>
+
+    <label class="field">
+      <span class="field-head"><span>Article body <em>(Markdown or HTML ok — images handled later)</em></span><span class="count" id="c-body"></span></span>
+      <textarea id="in-body" rows="16" placeholder="Paste your draft here. Use ## headings, [links](https://…), short paragraphs." spellcheck="true" lang="en"></textarea>
+      <span class="bar"><span id="bar-body"></span></span>
+      <span class="field-msg" id="msg-body"></span>
+    </label>
+
+    <div class="toolbar">
+      <button id="btn-sample" class="btn ghost" type="button">Load sample</button>
+      <button id="btn-clear" class="btn ghost" type="button">Clear</button>
+      <button id="btn-copy-report" class="btn" type="button">Copy report</button>
+    </div>
+  </section>
+
+  <section class="panel results" aria-live="polite">
+    <div class="score-row">
+      <div class="dial" id="dial" style="--p:0"><span id="scoreNum">–</span></div>
+      <div>
+        <h2 id="verdict">Start typing…</h2>
+        <p class="hint" id="scoreHint">Your overall SEO readiness appears here. Every check below updates as you type.</p>
+      </div>
+    </div>
+
+    <h3>Suggested edits <span class="hint-inline">— copy-ready rewrites</span></h3>
+    <div id="suggestions" class="suggestions"><p class="hint">Suggestions will appear here once there is something to review.</p></div>
+
+    <h3>Live checks</h3>
+    <ul id="checks" class="checks"></ul>
+
+    <h3>Writing assistant <span class="hint-inline">— clarity, correctness, tone (article body only)</span></h3>
+    <div id="tone"></div>
+    <ul id="writing" class="checks"></ul>
+
+    <h3>Keyword &amp; readability stats</h3>
+    <dl id="stats" class="stats"></dl>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <p>Static site — no tracking, drafts stay in <code>localStorage</code> on your device.
+  SEO thresholds load live from <code>seo-rules.json</code>; edit that file and push to update the deployed site.
+  See <code>README.md</code> for hosting on GitHub Pages.</p>
+</footer>
+
+<script src="./app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+{
+  "version": "2026.10.04-r2",
+  "updated": "2026-10-04",
+  "lastChecked": "2026-10-04",
+  "reviewNeeded": false,
+  "changedSources": [],
+  "notes": "Living SEO thresholds, last cross-checked against the sources below on 2026-10-04. To keep rules up to date: edit this file, bump version/updated, push \u2014 GitHub Pages redeploys automatically and the app picks it up (cache-busted fetch). No code changes needed. IMPORTANT: this file does NOT update itself \u2014 'live' means the app always fetches the latest pushed copy. Key 2026 findings baked in: (1) Google publishes no hard character limits \u2014 truncation is by pixel/device width, so char counts are drafting proxies; titles over ~70 chars are rewritten ~100% of the time, 51-55 chars has the lowest rewrite rate; (2) meta descriptions are not a ranking factor (CTR tool), desktop shows ~150-160 chars, mobile only ~110-125 \u2014 front-load the hook; (3) Google confirms keyword DENSITY is not a ranking factor (J. Mueller: 'no') \u2014 the density bands below are only an over-repetition smell test (flag above ~2%), never a quota to hit; place the keyphrase in title/H1/intro/one heading naturally instead.",
+  "sources": [
+    "https://developers.google.com/search/docs/fundamentals/seo-starter-guide",
+    "https://developers.google.com/search/docs/appearance/title-link",
+    "https://developers.google.com/search/docs/appearance/snippet",
+    "https://zyppy.com/seo/meta-title-tag-length/",
+    "https://ahrefs.com/seo/glossary/keyword-density",
+    "https://www.semrush.com/blog/meta-description/"
+  ],
+  "refresh": {
+    "staleAfterDays": 90,
+    "cacheBust": true
+  },
+  "rules": {
+    "title": {
+      "minChars": 40,
+      "maxChars": 60,
+      "hardMaxChars": 70,
+      "rewriteSafeMin": 51,
+      "rewriteSafeMax": 55,
+      "keywordAtStartMaxPos": 15,
+      "warnEmojiMax": 0
+    },
+    "summary": {
+      "label": "Article summary (used as meta description)",
+      "minChars": 120,
+      "maxChars": 155,
+      "hardMaxChars": 170
+    },
+    "excerpt": {
+      "label": "Excerpt (listing / teaser snippet)",
+      "minChars": 80,
+      "maxChars": 160,
+      "hardMaxChars": 200
+    },
+    "body": {
+      "minWords": 300,
+      "goodWords": 1000,
+      "minParagraphs": 3,
+      "maxSentenceWords": 25,
+      "longSentenceShareWarn": 0.25,
+      "maxParagraphWords": 120,
+      "keywordDensityMin": 0.005,
+      "keywordDensityMax": 0.025,
+      "keywordDensityGoodMax": 0.02,
+      "firstKeywordWithinWords": 100,
+      "minH2": 1,
+      "h2EveryWords": 350,
+      "minInternalLinks": 1,
+      "minExternalLinks": 1,
+      "transitionWordsMinShare": 0.2,
+      "passiveVoiceMaxShare": 0.15
+    },
+    "readability": {
+      "fleschGood": 60,
+      "fleschOkay": 40
+    }
+  },
+  "powerWords": [
+    "ultimate",
+    "proven",
+    "essential",
+    "complete",
+    "best",
+    "guide",
+    "how",
+    "why",
+    "new",
+    "free",
+    "easy",
+    "fast",
+    "secret",
+    "top"
+  ]
+}
