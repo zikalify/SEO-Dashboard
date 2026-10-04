@@ -7,21 +7,14 @@ const els = {
   excerpt: $("in-excerpt"), body: $("in-body"),
   checks: $("checks"), suggestions: $("suggestions"), stats: $("stats"),
   scoreNum: $("scoreNum"), dial: $("dial"), verdict: $("verdict"), scoreHint: $("scoreHint"),
-  rulesDot: $("rulesDot"), rulesStatus: $("rulesStatus"), rulesMeta: $("rulesMeta"),
-  customUrl: $("customRulesUrl"),
 };
 const LS_DRAFT = "seo-review-draft-v1";
-const LS_CUSTOM_RULES = "seo-review-rules-url";
 
-/* ---------- Built-in fallback rules (used only if live file can't load) ---------- */
+/* ---------- Built-in fallback rules (used only if the local file can't load) ---------- */
 const FALLBACK_RULES = {
   version: "built-in fallback",
   updated: "2026-10-04",
-  lastChecked: null,
-  reviewNeeded: false,
-  changedSources: [],
   sources: ["https://developers.google.com/search/docs/fundamentals/seo-starter-guide"],
-  refresh: { staleAfterDays: 90 },
   rules: {
     title: { minChars: 40, maxChars: 60, hardMaxChars: 70, rewriteSafeMin: 51, rewriteSafeMax: 55, keywordAtStartMaxPos: 15 },
     summary: { minChars: 120, maxChars: 155, hardMaxChars: 170 },
@@ -33,59 +26,19 @@ const FALLBACK_RULES = {
 };
 
 let RULES = FALLBACK_RULES;
-let rulesSourceLabel = "built-in fallback";
 
-/* ---------- Live rules loading ---------- */
-function rulesCandidates() {
-  const out = [];
-  const param = new URLSearchParams(location.search).get("rules");
-  const saved = localStorage.getItem(LS_CUSTOM_RULES);
-  if (param) out.push({ url: param, label: "custom ?rules= URL" });
-  if (saved) out.push({ url: saved, label: "custom URL (saved)" });
-  out.push({ url: "./seo-rules.json", label: "live seo-rules.json" });
-  return out;
-}
-
+/* ---------- Rules loading (local static file + built-in fallback; silent) ---------- */
 async function loadRules() {
-  setRulesUI("loading", "Loading SEO rules…", "");
-  for (const c of rulesCandidates()) {
-    try {
-      const bust = (RULES?.refresh?.cacheBust !== false) ? ((c.url.includes("?") ? "&" : "?") + "t=" + Date.now()) : "";
-      // Don't cache-bust custom URLs aggressively — still fine with one param.
-      const res = await fetch(c.url + (c.url.startsWith("./") ? bust : ""), { cache: "no-store" });
-      if (!res.ok) continue;
-      const json = await res.json();
-      if (!json || !json.rules) continue;
-      RULES = json;
-      rulesSourceLabel = c.label;
-      setRulesUI("ok", `SEO rules v${json.version || "?"} loaded live`, rulesMetaHTML(json, c.label));
-      analyze();
-      return;
-    } catch { /* try next */ }
+  try {
+    const res = await fetch("./seo-rules.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("no rules file");
+    const json = await res.json();
+    if (!json || !json.rules) throw new Error("bad rules file");
+    RULES = json;
+  } catch {
+    RULES = FALLBACK_RULES; // file:// opens land here; identical thresholds
   }
-  RULES = FALLBACK_RULES;
-  rulesSourceLabel = "built-in fallback (live file unreachable)";
-  setRulesUI("bad", "Live rules unreachable — using built-in fallback", `Checked ${rulesCandidates().map(c => c.label).join(" → ")}. Add <code>seo-rules.json</code> next to <code>index.html</code> when hosting.`);
   analyze();
-}
-
-function rulesMetaHTML(json, label) {
-  const staleDays = (json.refresh && json.refresh.staleAfterDays) || 90;
-  const age = json.updated ? Math.floor((Date.now() - new Date(json.updated + "T00:00:00Z").getTime()) / 864e5) : NaN;
-  const stale = !isNaN(age) && age > staleDays;
-  if (stale || json.reviewNeeded) setRulesUI("warn");
-  const src = (json.sources || []).slice(0, 2).map(s => `<a href="${s}" target="_blank" rel="noopener">source</a>`).join(" · ");
-  const verified = json.lastChecked ? ` · sources verified ${esc(json.lastChecked)}` : "";
-  const review = json.reviewNeeded
-    ? ` · <b>upstream guidance changed — thresholds under review${json.changedSources && json.changedSources.length ? " (" + json.changedSources.length + " source" + (json.changedSources.length > 1 ? "s" : "") + ")" : ""}</b>`
-    : "";
-  return `Source: ${label} · updated ${json.updated || "unknown"}${!isNaN(age) ? ` (${age}d ago${stale ? " — stale, refresh due" : ""})` : ""}${verified}${review}${src ? " · " + src : ""}`;
-}
-
-function setRulesUI(state, status, meta) {
-  els.rulesDot.className = "dot" + (state === "ok" ? " ok" : state === "bad" ? " bad" : "");
-  if (status) els.rulesStatus.textContent = status;
-  if (meta !== undefined) els.rulesMeta.innerHTML = meta;
 }
 
 /* ---------- Text utilities ---------- */
@@ -330,7 +283,7 @@ function render(checks, vals) {
   els.verdict.textContent = score === null ? "Start typing…" :
     score >= 80 ? "Strong — ready to publish" : score >= 55 ? "Close — fix the warnings" : "Needs work — see suggestions";
   els.scoreHint.textContent = score === null ? "Your overall SEO readiness appears here. Every check below updates as you type."
-    : `Based on SEO rules v${RULES.version || "?"} (${RULES.updated || "undated"}) · ${scored.filter(c => c.status === "pass").length}/${scored.length} checks passing.`;
+    : `${scored.filter(c => c.status === "pass").length}/${scored.length} checks passing.`;
 
   els.checks.innerHTML = checks.map(c =>
     `<li><b><span class="badge ${c.status}">${c.status}</span>${esc(c.title)}</b><p>${esc(c.detail)}</p></li>`).join("")
@@ -365,35 +318,147 @@ const rawSentences = (t) => {
   }
   return out;
 };
+// Mask URLs with equal-length spaces so search indices map 1:1 back onto raw text.
+const maskUrls = (r) => (r || "")
+  .replace(/https?:\/\/\S+/g, (m) => " ".repeat(m.length))
+  .replace(/\]\([^)]*\)/g, (m) => " ".repeat(m.length));
+// First words that can plausibly start a sentence (pronouns, determiners,
+// capitalized nouns, gerunds) — guards bare-clause splits against fragments.
+const STARTER = /^(he|she|it|they|we|you|i|this|that|these|those|there|here|my|your|his|her|its|our|their|the|a|an|[A-Z][\w'-]*|\w+ing)$/;
+const startsWell = (s) => STARTER.test((s.trim().split(/\s+/)[0] || "").replace(/^[^A-Za-z]+/, ""));
 // Genuinely split a long sentence in two (not truncate): returns
 // {find, replace} against the raw draft, or null if no safe split point.
+// Patterns, best first: comma-conjunction, semicolon, colon/dash,
+// "…, where …" (drop "where"), final "…, which …" → "This …",
+// final ", an X that …" → "This X …", bare "and" (starter-guarded),
+// "… to check they …" → "… They can check whether they …".
 function splitLongSentence(raw, maxWords) {
   if (words(raw).length <= maxWords) return null;
   if (/^\s*(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+|```|\||<)/.test(raw)) return null; // headings/quotes/lists/code/tables/HTML
-  // Mask URLs with equal-length spaces so indices map 1:1 back onto the raw text.
-  const masked = raw
-    .replace(/https?:\/\/\S+/g, (m) => " ".repeat(m.length))
-    .replace(/\]\([^)]*\)/g, (m) => " ".repeat(m.length));
-  const cands = [];
-  for (const m of masked.matchAll(/, (and|but|or|so|yet)\b/gi)) cands.push({ idx: m.index, end: m.index + m[0].length, pri: 0 });
-  for (const m of masked.matchAll(/;/g)) cands.push({ idx: m.index, end: m.index + 1, pri: 1 });
-  for (const m of masked.matchAll(/:| — | – /g)) cands.push({ idx: m.index, end: m.index + m[0].length, pri: 2 });
-  if (!cands.length) return null;
+  const masked = maskUrls(raw);
+  const cands = []; // {idx, pri, left, right}
+  const all = (re) => { const o = []; let m; re.lastIndex = 0; while ((m = re.exec(masked)) !== null) { o.push(m); if (o.length > 12) break; } return o; };
+  for (const m of all(/, (and|but|or|so|yet)\b/gi)) cands.push({ idx: m.index, pri: 0, left: raw.slice(0, m.index), right: raw.slice(m.index + m[0].length) });
+  for (const m of all(/;/g)) cands.push({ idx: m.index, pri: 1, left: raw.slice(0, m.index), right: raw.slice(m.index + 1) });
+  for (const m of all(/:| — | – /g)) cands.push({ idx: m.index, pri: 2, left: raw.slice(0, m.index), right: raw.slice(m.index + m[0].length) });
+  for (const m of all(/, where /gi)) cands.push({ idx: m.index, pri: 3, left: raw.slice(0, m.index), right: raw.slice(m.index + ", where ".length) });
+  {
+    const li = masked.lastIndexOf(", ");
+    if (li > 0) {
+      const tailR = raw.slice(li + 2);
+      let m = tailR.match(/^(an?|the) ([^,;]+?) that ([^,;]+?)\s*([.!?…])$/);
+      if (m && m[2].split(/\s+/).length <= 6 && m[3].split(/\s+/).length >= 2)
+        cands.push({ idx: li, pri: 3, left: raw.slice(0, li), right: `This ${m[2].trim()} ${m[3].trim()}${m[4]}` });
+      else if ((m = tailR.match(/^which ([^,;]+?)\s*([.!?…])$/)) && m[1].split(/\s+/).length >= 2)
+        cands.push({ idx: li, pri: 3, left: raw.slice(0, li), right: `This ${m[1].trim()}${m[2]}` });
+    }
+  }
+  for (const m of all(/ and /g)) {
+    if (masked[m.index - 2] === ",") continue; // comma-conjunction handled above
+    cands.push({ idx: m.index, pri: 4, left: raw.slice(0, m.index), right: raw.slice(m.index + 5) });
+  }
+  for (const m of all(/ to (check|confirm|verify) they /gi))
+    cands.push({ idx: m.index, pri: 5, left: raw.slice(0, m.index), right: `They can ${m[1]} whether they ` + raw.slice(m.index + m[0].length) });
   const mid = raw.length / 2;
   const viable = cands.filter((c) => {
-    const left = raw.slice(0, c.idx), right = raw.slice(c.end);
-    return words(left).length >= 4 && words(right).length >= 4;
+    const right = c.right.replace(/^\s+/, "");
+    return words(c.left).length >= 4 && words(right).length >= 4 && startsWell(right);
   });
   if (!viable.length) return null;
   const bestPri = Math.min(...viable.map((c) => c.pri));
   viable.sort((a, b) => Math.abs(a.idx - mid) - Math.abs(b.idx - mid));
   const best = viable.find((c) => c.pri === bestPri) || viable[0];
-  let left = raw.slice(0, best.idx).replace(/[\s,;:—–-]+$/, "");
+  let left = best.left.replace(/[\s,;:—–-]+$/, "");
   if (!/[.!?…]$/.test(left)) left += ".";
-  let right = raw.slice(best.end).replace(/^\s+/, "");
-  right = right.replace(/^[a-z]/, (ch) => ch.toUpperCase());
+  let right = best.right.replace(/^\s+/, "").replace(/^[a-z]/, (ch) => ch.toUpperCase());
   if (!/[.!?…]$/.test(right)) right += ".";
   return { find: raw, replace: left + " " + right };
+}
+
+const finishSentence = (t) => { t = (t || "").trim().replace(/\s+/g, " "); if (t && !/[.!?…]$/.test(t)) t += "."; return t; };
+
+// Delete only provably-safe filler: known wordy phrases, throat-clearing
+// openers, comma-wrapped asides, stray qualifiers. Returns {text, note} or null.
+function tightenSentence(raw) {
+  let t = raw;
+  const ops = [];
+  for (const [w, r] of WORDY_FIXES) {
+    const re = new RegExp("\\b" + escRe(w) + "\\b", "gi");
+    if (re.test(t)) {
+      ops.push(`“${w}” → “${r}”`);
+      t = t.replace(new RegExp("\\b" + escRe(w) + "\\b", "gi"),
+        (m) => (/^[A-Z]/.test(m) ? r[0].toUpperCase() + r.slice(1) : r));
+    }
+  }
+  if (/^(it is important to note that|it goes without saying that|as we all know,|in this day and age,|needless to say,|in today's fast-paced world,)\s*/i.test(t)) {
+    ops.push("cuts throat-clearing opener");
+    t = t.replace(/^(it is important to note that|it goes without saying that|as we all know,|in this day and age,|needless to say,|in today's fast-paced world,)\s*/i, "")
+         .replace(/^[a-z]/, (ch) => ch.toUpperCase());
+  }
+  const ap = t.match(/,\s*(an?|the)\s+[^,;]{4,60},\s*/);
+  if (ap && words(t.replace(ap[0], " ")).length >= 8) {
+    ops.push(`cuts aside (“${ap[0].trim().slice(0, 40)}…”)`);
+    t = t.replace(ap[0], " ");
+  }
+  if (/\b(really|quite|rather)\b/i.test(t)) {
+    ops.push("drops qualifiers");
+    t = t.replace(/\b(really|quite|rather) (?=[a-z])/gi, "");
+  }
+  t = t.replace(/\s{2,}/g, " ").trim();
+  if (t === raw || words(raw).length - words(t) < 1) return null;
+  return { text: t, note: ops.slice(0, 2).join("; ") || "trims filler" };
+}
+
+// Last resort: cut the tail at the latest boundary that leaves a complete
+// sentence under the limit. Returns {kept, tail} or null. The suggestion card
+// always shows what gets dropped, so this is a deliberate cut, never silent.
+function tailCut(text, maxWords) {
+  const masked = maskUrls(text);
+  const cuts = [];
+  const all = (re) => { const o = []; let m; re.lastIndex = 0; while ((m = re.exec(masked)) !== null) { o.push(m.index); if (o.length > 15) break; } return o; };
+  for (const i of all(/, and\b/gi)) cuts.push(i);
+  for (const i of all(/, but\b/gi)) cuts.push(i);
+  for (const i of all(/, or\b/gi)) cuts.push(i);
+  for (const i of all(/;/g)) cuts.push(i);
+  for (const i of all(/:/g)) cuts.push(i);
+  for (const i of all(/ — | – /g)) cuts.push(i);
+  for (const i of all(/,/g)) cuts.push(i);
+  for (const i of all(/ that\b/gi)) cuts.push(i + 0);
+  for (const i of all(/ which\b/gi)) cuts.push(i);
+  for (const i of all(/ who\b/gi)) cuts.push(i);
+  for (const i of all(/ because\b/gi)) cuts.push(i);
+  for (const i of all(/ although\b/gi)) cuts.push(i);
+  for (const i of all(/ while\b/gi)) cuts.push(i);
+  for (const i of all(/ and\b/gi)) { if (masked[i - 2] !== ",") cuts.push(i); }
+  for (const i of all(/ or\b/gi)) { if (masked[i - 2] !== ",") cuts.push(i); }
+  for (const m of all(/ to (check|see|learn|ensure|confirm|understand)\b/gi)) cuts.push(m);
+  let best = null;
+  const total = words(text).length;
+  for (const i of cuts) {
+    let kept = text.slice(0, i).replace(/[\s,;:—–-]+$/, "").trim();
+    if (/[\d,]$/.test(kept)) continue; // never cut inside a number ("46,000")
+    const parts = kept.split(/\s+/);
+    while (parts.length > 1 && DANGLING.has(parts[parts.length - 1].toLowerCase())) parts.pop();
+    kept = parts.join(" ");
+    const n = words(kept).length;
+    if (n >= 10 && n <= maxWords && total - n >= 2 && (!best || n > best.n)) best = { kept: finishSentence(kept), n };
+  }
+  if (!best) return null;
+  return { kept: best.kept, tail: best.kept.split(/\s+/).slice(-4).join(" ") };
+}
+
+// One entry point: split (meaning preserved) → tighten (safe deletions) →
+// tail-cut (shown honestly) → null (truly unsplittable, advise by hand).
+function shortenFix(raw, maxWords) {
+  const split = splitLongSentence(raw, maxWords);
+  if (split) return { kind: "split", replace: split.replace, note: "splits it in two at a clean clause break (meaning preserved)" };
+  const tight = tightenSentence(raw);
+  const base = tight ? tight.text : raw;
+  if (tight && words(base).length <= maxWords)
+    return { kind: "tighten", replace: finishSentence(base), note: `trims filler (${tight.note})` };
+  const cut = tailCut(base, maxWords);
+  if (cut) return { kind: "cut", replace: cut.kept, note: `${tight ? "trims filler, then " : ""}cuts everything after “…${cut.tail}” — check nothing vital is lost` };
+  return null;
 }
 
 function suggestTitle(title, kw) {
@@ -408,7 +473,7 @@ function suggestTitle(title, kw) {
 
 function renderSuggestions({ kw, title, summary, excerpt, body }) {
   const out = [];
-  const push = (h, why, text, fix) => { if (text) out.push({ h, why, text, fix }); };
+  const push = (h, why, text, fix, copy) => { if (text) out.push({ h, why, text, fix, copy: copy !== false }); };
   const R = RULES.rules;
 
   if (title.trim()) {
@@ -442,7 +507,7 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
       if (spots.length) {
         spots.forEach((sp, i) => push(
           `Suggested heading ${i + 1} (${tag})`,
-          `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — working title below (rewrite it in your own words${kw ? ", ideally with the keyphrase" : ""}).`,
+          `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — ${sp.reason}, so “${sp.title}” fits. Tap Insert${sp.placeholder ? " (then replace the placeholder with your own words)" : ", then rewrite it in your own words"}${kw ? " (ideally with the keyphrase)" : ""}.`,
           hashes + " " + sp.title,
           { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" }
         ));
@@ -458,25 +523,26 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
     if (!external.length) push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.");
     const longS = rawSentences(body).filter((s) => words(s).length > R.body.maxSentenceWords).slice(0, 2);
     longS.forEach((s) => {
-      const split = splitLongSentence(s, R.body.maxSentenceWords);
-      if (split) push("Split into two sentences", "Over " + R.body.maxSentenceWords + " words — genuine split below, ready to drop in (meaning preserved).", split.replace,
-        { find: split.find, replace: split.replace, verb: "Replace in draft" });
+      const fix = shortenFix(s, R.body.maxSentenceWords);
+      if (fix) push(fix.kind === "split" ? "Split into two sentences" : "Shorten sentence",
+        `Over ${R.body.maxSentenceWords} words — ${fix.note}.`, fix.replace,
+        { find: s, replace: fix.replace, verb: "Replace in draft" });
       else {
         const ws = s.split(/\s+/);
         const mid = ws.slice(Math.max(0, Math.floor(ws.length / 2) - 2), Math.floor(ws.length / 2) + 2).join(" ");
-        push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no clean split point. Try breaking it near “…${mid}…”.`, s);
+        push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no safe automatic fix. Try breaking it near “…${mid}…”.`, s, null, false);
       }
     });
     const f = flesch(body);
     if (f !== null && f < RULES.rules.readability.fleschOkay)
-      push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.");
+      push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.", null, false);
   }
 
   els.suggestions.innerHTML = out.length ? out.map((s, i) =>
     `<div class="sug"><h4>${esc(s.h)}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote>` +
     (s.fix
       ? `<button class="btn small copy" data-r="${i}" type="button">${esc(s.fix.verb || "Replace in draft")}</button>`
-      : `<button class="btn small copy" data-i="${i}" type="button">Copy</button>`) + `</div>`).join("")
+      : (s.copy ? `<button class="btn small copy" data-i="${i}" type="button">Copy</button>` : "")) + `</div>`).join("")
     : `<p class="hint">Suggestions will appear here once there is something to review.</p>`;
   els.suggestions.querySelectorAll("[data-i]").forEach(b => b.addEventListener("click", () => {
     navigator.clipboard.writeText(out[+b.dataset.i].text).then(() => { b.textContent = "Copied!"; setTimeout(() => b.textContent = "Copy", 1200); });
@@ -502,7 +568,7 @@ function renderStats({ kw, title, summary, excerpt, body }, grade) {
     ["Keyword repetition (body)", dens === null ? "<span class='hint'>—</span>" : `${dens.toFixed(1)}% exact-match (over ~${(RULES.rules.body.keywordDensityGoodMax * 100).toFixed(0)}% = review for stuffing; density itself is not a ranking factor)`],
     ["Readability", f === null ? "<span class='hint'>need ~30+ words</span>" : `Flesch ${Math.round(f)} (${f >= RULES.rules.readability.fleschGood ? "good" : f >= RULES.rules.readability.fleschOkay ? "okay" : "dense"})` + (grade !== null && grade !== undefined ? ` · grade ~${Math.max(1, Math.round(grade))} · ${Math.max(1, Math.round(bw / 200))} min read` : "")],
     ["Links", `${internal.length} internal · ${external.length} external`],
-    ["Rules", `v${esc(RULES.version || "?")} · thresholds ${esc(RULES.updated || "?")} · sources verified ${esc(RULES.lastChecked || "never")}${RULES.reviewNeeded ? " · <b>REVIEW NEEDED</b>" : ""}`],
+    ["Rules", `SEO rules v${esc(RULES.version || "?")} (thresholds updated ${esc(RULES.updated || "?")})`],
   ];
   els.stats.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
 }
@@ -711,27 +777,77 @@ function renderWriting(body) {
   return { grade };
 }
 
-/* ---------- Google announcements (written monthly by Actions into google-updates.json) ---------- */
-async function loadGoogleUpdates() {
-  const el = $("gupdates");
-  try {
-    const res = await fetch("./google-updates.json?t=" + Date.now(), { cache: "no-store" });
-    if (!res.ok) throw new Error("no file yet");
-    const data = await res.json();
-    if (!data.items || !data.items.length) throw new Error("empty");
-    el.innerHTML = `<ul class="checks">` + data.items.slice(0, 10).map((i) =>
-      `<li><b><span class="badge ${/status/i.test(i.feed) ? "warn" : /docs/i.test(i.feed) ? "pass" : "engage"}">${esc(i.feed)}</span>` +
-      `<a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a></b>` +
-      `<p>${esc(i.date || "undated")}</p></li>`).join("") + `</ul>` +
-      `<p class="hint">Pulled ${esc(data.checked || "unknown")} from Google's official feeds (Search Central blog, docs updates, status dashboard). These are announcements — translate them into thresholds via the monthly review, they don't auto-change your scores.</p>`;
-  } catch {
-    el.innerHTML = `<p class="hint">Google's announcement feed appears here after the first scheduled pull (monthly, or run the workflow manually). Scores are unaffected until thresholds are reviewed.</p>`;
-  }
+// Words that must never end a heading (they dangle: "...eligible will be", "...adept with").
+const DANGLING = new Set(("a,an,the,and,or,but,to,of,with,for,in,on,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,that,which,who,whom,whose,when,where,while,until,unless,though,although,because,since,able,likely,due,per,via,than,so,yet,nor,both,either,such,more,most,very,just,quite,rather,up,out,off,away").split(","));
+const AUDIENCE_BLOCK = /^(example|instance|starters?|one (more )?thing|the (record|moment)|now|better or worse)$/i;
+
+// Compress an opening line into a title: drop throat-clearing ("By training…",
+// "For X,…"), flip "Organizations that are eligible" → "Eligible organizations",
+// cut to length at a word boundary, strip dangling endings.
+function compressTitle(s, maxLen) {
+  let t = (s || "").replace(/\s+/g, " ").trim();
+  t = t.replace(/^by ([a-z]+ing)\b/i, "$1").replace(/^([a-z]+ing) (up|out|off|away)\b/i, "$1");
+  t = t.replace(/\b([A-Za-z]+)s (that|who) are ([a-z]+)\b/, (mm, n, r, adj) => adj + " " + n + "s");
+  if (t.length > maxLen) { const cut = t.slice(0, maxLen - 1); const sp = cut.lastIndexOf(" "); t = sp > 10 ? cut.slice(0, sp) : cut; }
+  t = t.replace(/[:;,.\-–—]+$/, "").trim();
+  const parts = t.split(" ");
+  while (parts.length > 1 && DANGLING.has(parts[parts.length - 1].toLowerCase())) parts.pop();
+  t = parts.join(" ");
+  return t ? t[0].toUpperCase() + t.slice(1) : "";
 }
 
-// Find paragraphs that deserve a section heading: returns [{para, title, preview}].
-// Titles are working drafts from each paragraph's own opening words — the
-// author rewrites them, but the PLACEMENT (the hard part) is detected.
+// Craft a genuinely relevant heading from a paragraph's content (first match wins):
+// named programs → "What is X?", "For <audience>, …" → "What this means for Y",
+// eligibility/apply → "Eligibility and how to apply", processes → "How it works",
+// comparisons, pricing, central entities — then compressed opening line as fallback.
+function craftHeading(block) {
+  const plain = stripMdHtml(block).replace(/\s+/g, " ").trim();
+  let m;
+  if ((m = plain.match(/called (?:the )?((?:[A-Z][\w&'-]* ?)+)/))) {
+    const x = m[1].trim();
+    if (x.split(" ").length <= 6) return { title: `What is the ${x}?`, reason: `it names “${x}”` };
+  }
+  if ((m = plain.match(/^for ([^,]{3,50}),/i))) {
+    const aud = m[1].trim();
+    if (!AUDIENCE_BLOCK.test(aud) && !/for example/i.test(aud))
+      return { title: `What this means for ${aud[0].toLowerCase() + aud.slice(1)}`, reason: `it speaks directly to ${aud}` };
+  }
+  const elig = /eligib\w*/i.test(plain);
+  const applyW = /apply|sign ?up|register/i.test(plain);
+  const contactW = /contact|email|call us|get in touch/i.test(plain);
+  if (elig && (applyW || contactW)) return { title: "Eligibility and how to apply", reason: "it covers who qualifies and what to do next" };
+  if (elig) return { title: "Who is eligible", reason: "it covers who qualifies" };
+  if (applyW) return { title: "How to apply", reason: "it explains how to apply" };
+  if (contactW) return { title: "How to get in touch", reason: "it gives a contact route" };
+  if (/how it works|step[- ]by[- ]step/i.test(plain)) return { title: "How it works", reason: "it walks through the process" };
+  if ((m = plain.match(/([A-Za-z][\w-]*(?: [A-Za-z][\w-]*){0,2})\s+vs\.?\s+([A-Za-z][\w-]*(?: [A-Za-z][\w-]*){0,2})/))) {
+    const a = m[1].trim(), b = m[2].trim();
+    if (!/^(and|or|the)$/i.test(b)) {
+      const ac = a[0].toUpperCase() + a.slice(1);
+      return { title: `${ac} vs ${b}`, reason: "it compares two things" };
+    }
+  }
+  if (/\$\s?\d|\bpricing?\b|\bcosts?\b|\bsubscription\b/i.test(plain)) return { title: "Pricing and availability", reason: "it mentions price or access" };
+  const entities = [...plain.matchAll(/([A-Z][a-zA-Z&'-]*(?:\s+[A-Z][a-zA-Z&'-]*)+)/g)]
+    .map((e) => e[1].trim().replace(/^(the|a|an) /i, "")).filter((e) => e && e.split(" ").length <= 5);
+  if (entities.length) {
+    entities.sort((a, b) => b.length - a.length);
+    return { title: `The ${entities[0]}`, reason: `it centers on ${entities[0]}` };
+  }
+  const first = plain.split(/(?<=[.!?…])\s+/)[0] || plain;
+  const t = compressTitle(first, 52);
+  if (t.split(" ").length >= 3) return { title: t, reason: "distilled from the opening line" };
+  return null;
+}
+
+// Find paragraphs that deserve a section heading: returns
+// [{para, title, preview, reason}]. Placement is detected; titles are crafted
+// from the paragraph's own content (see craftHeading) — still meant to be
+// reviewed, but relevant rather than sentence fragments.
+// Generic placeholders, used only when no content-based header can be derived —
+// the PLACEMENT is still detected, the words are yours to replace.
+const STATIC_HEADINGS = ["What you need to know", "Why it matters", "How it works", "What to watch next"];
+
 function headingInsertions(body, kw) {
   const out = [];
   const re = /[^\n]+(?:\n(?!\n)[^\n]+)*/g; // blocks separated by blank lines
@@ -744,13 +860,10 @@ function headingInsertions(body, kw) {
     if (words(block).length < 25) continue;
     const before = body.slice(0, m.index).trimEnd().split("\n").pop() || "";
     if (/^#{1,6}\s/.test(before)) continue; // already has a heading
+    const crafted = craftHeading(block);
     const plain = stripMdHtml(block).replace(/\s+/g, " ").trim();
-    let title = plain.split(" ").slice(0, 7).join(" ");
-    if (title.length > 52) { const cut = title.slice(0, 51); title = cut.slice(0, Math.max(cut.lastIndexOf(" "), 10)); }
-    title = title.replace(/[:;,.\-–—]+$/, "").trim();
-    if (!title) continue;
-    title = title[0].toUpperCase() + title.slice(1);
-    out.push({ para: block, title, preview: plain.slice(0, 60) });
+    if (crafted) out.push({ para: block, title: crafted.title, reason: crafted.reason, preview: plain.slice(0, 60) });
+    else out.push({ para: block, title: STATIC_HEADINGS[out.length % STATIC_HEADINGS.length], reason: "no specific header could be derived from this paragraph, so this is a placeholder at the right spot", preview: plain.slice(0, 60), placeholder: true });
     if (out.length >= 4) break;
   }
   return out;
@@ -810,18 +923,6 @@ $("btn-copy-report").addEventListener("click", (e) => {
     setTimeout(() => b.textContent = "Copy report", 1200);
   });
 });
-$("refreshRules").addEventListener("click", loadRules);
-$("saveRulesUrl").addEventListener("click", () => {
-  const u = els.customUrl.value.trim();
-  if (u) localStorage.setItem(LS_CUSTOM_RULES, u);
-  loadRules();
-});
-$("clearRulesUrl").addEventListener("click", () => {
-  localStorage.removeItem(LS_CUSTOM_RULES); els.customUrl.value = "";
-  loadRules();
-});
-els.customUrl.value = localStorage.getItem(LS_CUSTOM_RULES) || "";
 
 loadDraft();
 loadRules();
-loadGoogleUpdates();

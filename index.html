@@ -14,25 +14,6 @@
       <h1>SEO Article Review</h1>
       <p class="sub">Paste your draft &rarr; get live SEO feedback + rewrite suggestions. Nothing leaves your browser.</p>
     </div>
-    <div class="rules-card" id="rulesCard" aria-live="polite">
-      <div class="rules-row">
-        <span class="dot" id="rulesDot"></span>
-        <span id="rulesStatus">Loading SEO rules…</span>
-      </div>
-      <div class="rules-meta" id="rulesMeta"></div>
-      <div class="rules-actions">
-        <button id="refreshRules" class="btn small" type="button">Refresh rules</button>
-        <details class="rules-settings">
-          <summary>Custom rules URL</summary>
-          <p class="hint">Point the app at any hosted JSON with the same shape as <code>seo-rules.json</code> (e.g. a gist). Stored only in this browser.</p>
-          <div class="row">
-            <input id="customRulesUrl" type="url" placeholder="https://…/seo-rules.json" spellcheck="false" />
-            <button id="saveRulesUrl" class="btn small" type="button">Save</button>
-            <button id="clearRulesUrl" class="btn small ghost" type="button">Reset</button>
-          </div>
-        </details>
-      </div>
-    </div>
   </div>
 </header>
 
@@ -102,9 +83,6 @@
 
     <h3>Keyword &amp; readability stats</h3>
     <dl id="stats" class="stats"></dl>
-
-    <h3>Latest from Google <span class="hint-inline">— official feeds, pulled monthly</span></h3>
-    <div id="gupdates"><p class="hint">Loading…</p></div>
   </section>
 </main>
 
