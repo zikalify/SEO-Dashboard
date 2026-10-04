@@ -293,7 +293,7 @@ function render(checks, vals) {
     `<li><b><span class="badge ${c.manual ? "manual" : c.status}">${c.manual ? "done ✓" : c.status}</span>${esc(c.title)}</b><p>${esc(c.detail)}</p></li>`).join("")
     || `<li><p class="hint">No checks yet.</p></li>`;
 
-  renderSuggestions(vals);
+  renderSuggestions(vals, (id) => shown.find((c) => c.id === id), max);
   const writing = renderWriting(vals.body);
   renderStats(vals, writing.grade);
 
@@ -475,7 +475,7 @@ function suggestTitle(title, kw) {
   return t;
 }
 
-function renderSuggestions({ kw, title, summary, excerpt, body }) {
+function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, totalW) {
   const out = [];
   // satisfies: the check-id this suggestion resolves — lets a Done mark count
   // that check as manually passed in scoring (badged, reversible).
@@ -487,7 +487,7 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
     if (fixed !== title.trim())
       push("Title rewrite", `Fits ${R.title.minChars}–${R.title.maxChars} chars${kw ? " with the keyphrase up front" : ""}.`, fixed, null, true, "title-len");
     else if (title.trim().length < R.title.minChars)
-      push("Title idea", "Too short to compete — add a promise or scope.", `${title.trim()} — what you get and who it's for`.slice(0, R.title.maxChars));
+      push("Title idea", "Too short to compete — add a promise or scope.", `${title.trim()} — what you get and who it's for`.slice(0, R.title.maxChars), null, true, "title-len");
   }
   if (summary.trim() || title.trim()) {
     const base = summary.trim() || `${stripMdHtml(body).split(/\s+/).slice(0, 24).join(" ")}…`;
@@ -506,19 +506,21 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
   if (bw > 0) {
     const heads = parseHeadings(body);
     const lvl = RULES.rules.body.sectionLevel || 2, hashes = "#".repeat(lvl), tag = "H" + lvl;
-    const h2count = heads.filter((h) => h.level === lvl).length;
-    const h2need = Math.max(RULES.rules.body.minSections, Math.floor(bw / RULES.rules.body.wordsPerSection));
-    if (h2count < h2need) {
-      const spots = headingInsertions(body, kw);
-      if (spots.length) {
-        spots.forEach((sp, i) => push(
-          `Suggested heading ${i + 1} (${tag})`,
-          `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — ${sp.reason}, so “${sp.title}” fits. ${sp.draft ? "Working title — rewrite it in your own words" : "Ready to use as-is; tap Insert"}.`,
-          hashes + " " + sp.title,
-          { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" },
-          true, "body-h"
-        ));
-      } else {
+    // Insertion cards follow detected opportunities (every heading-less section),
+    // NOT the score quota — adding one heading never hides the others.
+    const spots = headingInsertions(body, kw);
+    if (spots.length) {
+      spots.forEach((sp, i) => push(
+        `Suggested heading ${i + 1} (${tag})`,
+        `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — ${sp.reason}, so “${sp.title}” fits. ${sp.draft ? "Working title — rewrite it in your own words" : "Ready to use as-is; tap Insert"}.`,
+        hashes + " " + sp.title,
+        { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" },
+        true, "body-h"
+      ));
+    } else {
+      const h2count = heads.filter((h) => h.level === lvl).length;
+      const h2need = Math.max(RULES.rules.body.minSections, Math.floor(bw / RULES.rules.body.wordsPerSection));
+      if (h2count < h2need) {
         push("Structure fix", "Add scannable sections — each heading answers one question. (No clear paragraphs detected, so place these by hand.)",
           [hashes + " What it is", hashes + " Why it matters", hashes + " How to do it", hashes + " Mistakes to avoid", hashes + " FAQ"].join("\n"), null, true, "body-h");
       }
@@ -533,11 +535,11 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
       const fix = shortenFix(s, R.body.maxSentenceWords);
       if (fix) push(fix.kind === "split" ? "Split into two sentences" : "Shorten sentence",
         `Over ${R.body.maxSentenceWords} words — ${fix.note}.`, fix.replace,
-        { find: s, replace: fix.replace, verb: "Replace in draft" }, true, "body-sent");
+        { find: s, replace: fix.replace, verb: "Replace in draft" });
       else {
         const ws = s.split(/\s+/);
         const mid = ws.slice(Math.max(0, Math.floor(ws.length / 2) - 2), Math.floor(ws.length / 2) + 2).join(" ");
-        push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no safe automatic fix. Try breaking it near “…${mid}…”.`, s, null, false, "body-sent");
+        push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no safe automatic fix. Try breaking it near “…${mid}…”.`, s, null, false);
       }
     });
     const f = flesch(body);
@@ -545,11 +547,22 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
       push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.", null, false, "body-read");
   }
 
+  // Rank by exact score impact: fixing a failed heavyweight check gains more
+  // than polishing a warning. Biggest gains float to the top. (Sort is stable,
+  // so equal-impact cards keep their logical order.)
+  const PTS = { pass: 1, warn: 0.45, fail: 0 };
+  for (const s of out) {
+    const c = s.satisfies && getCheck ? getCheck(s.satisfies) : null;
+    s.impact = (c && c.weight > 0 && c.status !== "skip" && totalW > 0)
+      ? Math.round(c.weight * (1 - (PTS[c.status] ?? 0)) / totalW * 100) : 0;
+  }
+  out.sort((a, b) => b.impact - a.impact);
+
   els.suggestions.innerHTML = out.length ? out.map((s, i) => {
     const done = s.satisfies && doneChecks[s.satisfies];
-    return `<div class="sug${done ? " is-done" : ""}"><h4>${esc(s.h)}${done ? ' <span class="badge manual">done ✓</span>' : ""}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote>` +
+    return `<div class="sug${done ? " is-done" : ""}"><h4>${esc(s.h)}${s.impact > 0 ? ` <span class="badge impact">+${s.impact}</span>` : ""}${done ? ' <span class="badge manual">done ✓</span>' : ""}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote>` +
     (s.fix
-      ? `<button class="btn small copy" data-r="${i}" type="button">${esc(s.fix.verb || "Replace in draft")}</button>`
+      ? `<button class="btn small copy" data-r="${i}" type="button">${esc(s.fix.verb || "Replace in draft")}</button> <button class="btn small ghost" data-find="${i}" type="button">Find</button>`
       : (s.copy ? `<button class="btn small copy" data-i="${i}" type="button">Copy</button>` : "")) +
     (s.satisfies ? ` <button class="btn small ghost" data-done="${i}" type="button">${done ? "Undo" : "Done"}</button>` : "") + `</div>`;
   }).join("")
@@ -564,6 +577,18 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
     else { pushUndo("Done: " + s.h); doneChecks[s.satisfies] = true; }
     saveDone();
     analyze();
+  }));
+  els.suggestions.querySelectorAll("[data-find]").forEach(b => b.addEventListener("click", () => {
+    // Jump to the problem text in the draft: native selection = highlight.
+    const s = out[+b.dataset.find];
+    if (!s || !s.fix) return;
+    const idx = els.body.value.indexOf(s.fix.find);
+    if (idx === -1) { const t = b.textContent; b.textContent = "Gone"; setTimeout(() => b.textContent = t, 1200); return; }
+    els.body.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    els.body.focus({ preventScroll: true });
+    els.body.setSelectionRange(idx, idx + s.fix.find.length);
+    els.body.classList.add("flash");
+    setTimeout(() => els.body.classList.remove("flash"), 1000);
   }));
   els.suggestions.querySelectorAll("[data-r]").forEach(b => b.addEventListener("click", () => {
     const s = out[+b.dataset.r];
@@ -799,7 +824,7 @@ function renderWriting(body) {
 }
 
 // Words that must never end a heading (they dangle: "...eligible will be", "...adept with").
-const DANGLING = new Set(("a,an,the,and,or,but,to,of,with,for,in,on,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,that,which,who,whom,whose,when,where,while,until,unless,though,although,because,since,able,likely,adept,capable,responsible,available,ready,willing,eager,prone,accustomed,subject,due,per,via,than,so,yet,nor,both,either,such,more,most,very,just,quite,rather,up,out,off,away").split(","));
+const DANGLING = new Set(("a,an,the,and,or,but,to,of,with,for,in,on,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,that,which,who,whom,whose,when,where,while,until,unless,though,although,because,since,able,likely,adept,capable,responsible,available,ready,willing,eager,prone,accustomed,subject,due,per,via,than,so,yet,nor,both,either,such,more,most,alongside,across,through,throughout,within,without,among,between,beyond,despite,during,except,toward,towards,upon,around,very,just,quite,rather,up,out,off,away").split(","));
 const AUDIENCE_BLOCK = /^(example|instance|starters?|one (more )?thing|the (record|moment)|now|better or worse)$/i;
 
 // Compress an opening line into a title: drop throat-clearing ("By training…",
@@ -867,13 +892,15 @@ function craftHeading(block) {
     if (seqCount(sent) < 3) e.listSentence = false;
     seen.set(key, e);
   }
+  const rankEntity = (e, text) => e.count * 10 + (e.inFirst ? 5 : 0) + text.length / 20;
+  // Confident pass: repeated entities are genuinely topical.
   let bestEnt = null, bestScore = 0;
   for (const [text, e] of seen) {
-    if (!(e.count >= 2 || (e.inFirst && !e.listSentence))) continue;
-    const score = e.count * 10 + (e.inFirst ? 5 : 0) + text.length / 20;
+    if (e.count < 2) continue;
+    const score = rankEntity(e, text);
     if (score > bestScore) { bestScore = score; bestEnt = { text, count: e.count }; }
   }
-  if (bestEnt) return { title: `The ${bestEnt.text}`, reason: bestEnt.count > 1 ? `“${bestEnt.text}” runs through the paragraph` : `it opens on ${bestEnt.text}` };
+  if (bestEnt) return { title: `The ${bestEnt.text}`, reason: `“${bestEnt.text}” runs through the paragraph` };
   // Concrete figures ("10,000 software engineers") beat bland fallbacks —
   // with trailing complement-hungry adjectives stripped ("adept" needs an "at").
   const AUX = /^(have|has|had|will|would|can|could|shall|should|may|might|must|are|is|was|were|be|been|do|does|did|more|less|than|over|under|per|vs|and|or|of|to|in|on|by|for|with|from|at|as|a|the|an|that|which|who)$/i;
@@ -884,6 +911,15 @@ function craftHeading(block) {
     if (num >= 100 && parts.length >= 1 && !AUX.test(parts[0]))
       return { title: `${m[1]} ${parts.join(" ")}`, reason: "it leads with a concrete figure" };
   }
+  // Last-chance pass: a single mention that OPENS the paragraph outside a list.
+  // Deliberately ranked below concrete figures — participants aren't topics.
+  bestEnt = null; bestScore = 0;
+  for (const [text, e] of seen) {
+    if (e.count !== 1 || !e.inFirst || e.listSentence) continue;
+    const score = rankEntity(e, text);
+    if (score > bestScore) { bestScore = score; bestEnt = { text, count: 1 }; }
+  }
+  if (bestEnt) return { title: `The ${bestEnt.text}`, reason: `it opens on ${bestEnt.text}` };
   const first = plain.split(/(?<=[.!?…])\s+/)[0] || plain;
   const t = compressTitle(first, 52);
   if (t.split(" ").length >= 3) return { title: t, reason: "distilled from the opening line", draft: true };
