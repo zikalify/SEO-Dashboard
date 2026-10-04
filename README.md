@@ -1,9 +1,13 @@
 # SEO Article Review — GitHub Pages web app
 
-Paste a draft, get **live SEO feedback + copy-ready rewrite suggestions** as you type.
+Paste a draft, get **live SEO feedback + rewrite suggestions** as you type.
 100% static (`index.html` + `styles.css` + `app.js` + `seo-rules.json`) — no build step, no backend, drafts never leave the browser (saved to `localStorage`).
 
+**One-click fixes:** long-sentence suggestions carry a **Replace in draft** button that swaps the problem sentence for a genuine two-sentence split (never a truncation), and heading suggestions carry **Insert heading** buttons that place a working `###`/`##` title at the detected paragraph — the fix lands in your draft and the panel confirms by clearing the issue.
+
 Fields (all optional): **focus keyphrase, title, article summary** (doubles as meta description), **excerpt** (listing teaser), **article body** (Markdown or HTML; images intentionally ignored — applied later).
+
+**House style — heading level:** `seo-rules.json → rules.body.sectionLevel` sets the section header the whole app works with (`3` = Neowin's `###` H3 style, `2` = standard `##`). Every heading check, the keyphrase-in-heading check, the structure template, the auto-placed heading insertions, and the stats readout follow it automatically — no code changes to switch styles.
 
 ## Writing assistant (Grammarly-style, rule-based)
 
@@ -40,6 +44,16 @@ Google publishes no numeric SEO-rules API, so no static site can safely auto-rew
 - **Sources unchanged** → the workflow stamps `lastChecked` with that day's date and pushes. The app header then reads "sources verified YYYY-MM-DD" — that stamp is your proof the rules were re-confirmed.
 - **Sources changed** → the workflow sets `reviewNeeded: true`, records which URLs changed, and opens (or updates) a `seo-rules-review` issue containing the check report. The app shows a "thresholds under review" warning until a human revises the thresholds and bumps `version`/`updated`.
 - Enable it by pushing these files with **Actions enabled** in the repo (scheduled workflows run on the default branch). Test it anytime with **Actions → SEO rules freshness monitor → Run workflow`​**.
+
+## Live Google announcements in the dashboard
+
+Yes — this part genuinely pulls from Google. The same workflow runs `.github/scripts/fetch_google_updates.py`, which reads three official Google feeds and publishes them as `google-updates.json` (committed at repo root, served by Pages):
+
+- **Search Central Blog** — algorithm updates, feature announcements, SEO best-practice posts.
+- **Search docs updates** — documentation changes, i.e. the closest thing Google publishes to "rule updates".
+- **Search Status Dashboard** — ranking incidents (core/spam updates while they roll out).
+
+The dashboard's **Latest from Google** panel fetches that file live on every load (newest first, with dates and links). New items since the previous run are also appended to the check report, so reviewers see what arrived. One honest caveat, shown in the panel itself: these are *announcements*, not numeric thresholds — a human still translates them into `seo-rules.json` values during the monthly review. Google publishes no machine-readable rules API, so this feed-plus-review loop is the closest a static site can get.
 
 Rule sources tracked in the file: Google Search Essentials / title-link / snippet docs. Re-check them when bumping the file.
 Rules last cross-checked against sources: **2026-10-04** (version `2026.10.04-r2`). The app flags the rules as stale 90 days after the `updated` date — treat that as your prompt to re-verify.

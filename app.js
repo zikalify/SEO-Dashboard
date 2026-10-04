@@ -26,7 +26,7 @@ const FALLBACK_RULES = {
     title: { minChars: 40, maxChars: 60, hardMaxChars: 70, rewriteSafeMin: 51, rewriteSafeMax: 55, keywordAtStartMaxPos: 15 },
     summary: { minChars: 120, maxChars: 155, hardMaxChars: 170 },
     excerpt: { minChars: 80, maxChars: 160, hardMaxChars: 200 },
-    body: { minWords: 300, goodWords: 1000, minParagraphs: 3, maxSentenceWords: 25, longSentenceShareWarn: 0.25, maxParagraphWords: 120, keywordDensityMin: 0.005, keywordDensityMax: 0.025, keywordDensityGoodMax: 0.02, firstKeywordWithinWords: 100, minH2: 1, h2EveryWords: 350, minInternalLinks: 1, minExternalLinks: 1, transitionWordsMinShare: 0.2, passiveVoiceMaxShare: 0.15 },
+    body: { minWords: 300, goodWords: 1000, minParagraphs: 3, maxSentenceWords: 25, longSentenceShareWarn: 0.25, maxParagraphWords: 120, keywordDensityMin: 0.005, keywordDensityMax: 0.025, keywordDensityGoodMax: 0.02, firstKeywordWithinWords: 100, sectionLevel: 2, minSections: 1, wordsPerSection: 350, minInternalLinks: 1, minExternalLinks: 1, transitionWordsMinShare: 0.2, passiveVoiceMaxShare: 0.15 },
     readability: { fleschGood: 60, fleschOkay: 40 },
   },
   powerWords: ["ultimate", "proven", "essential", "complete", "best", "guide", "how", "why", "new", "free", "easy", "fast", "secret", "top"],
@@ -240,14 +240,16 @@ function analyze() {
     else if (ss.length) add("body-sent", "pass", "Sentence length fine", "Readable rhythm for skimmers.", 1);
 
     const heads = parseHeadings(body);
-    const h2s = heads.filter(h => h.level <= 2);
-    if (h2s.length < R.body.minH2) add("body-h", "warn", "No clear sections", "Add ## subheadings with keyword variants — they structure snippets and featured answers.", 2);
+    // Section level comes from live rules (Neowin CMS = H3; standard sites = H2).
+    const lvl = R.body.sectionLevel || 2, tag = "H" + lvl, hashes = "#".repeat(lvl);
+    const secs = heads.filter(h => h.level === lvl);
+    if (secs.length < R.body.minSections) add("body-h", "warn", "No clear sections", `Add ${hashes} subheadings with keyword variants — they structure snippets and featured answers. (House style: ${tag}.)`, 2);
     else {
-      const need = Math.max(R.body.minH2, Math.floor(bw / R.body.h2EveryWords));
-      if (h2s.length >= need) add("body-h", "pass", `${h2s.length} section headings`, "Good structure for skimmers and crawlers.", 2);
-      else add("body-h", "warn", `Only ${h2s.length} section heading${h2s.length > 1 ? "s" : ""}`, `For ~${bw} words aim for ~${need}. Each H2 should promise one answer.`, 2);
+      const need = Math.max(R.body.minSections, Math.floor(bw / R.body.wordsPerSection));
+      if (secs.length >= need) add("body-h", "pass", `${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`, "Good structure for skimmers and crawlers.", 2);
+      else add("body-h", "warn", `Only ${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`, `For ~${bw} words aim for ~${need}. Each ${tag} should promise one answer.`, 2);
     }
-    if (heads.some(h => h.level === 1) || /^#\s/m.test(body)) add("body-h1", "warn", "Avoid H1 inside the body", "Your title is the H1 — start body sections at ##.", 0.5);
+    if (heads.some(h => h.level === 1) || /^#\s/m.test(body)) add("body-h1", "warn", "Avoid H1 inside the body", `Your title is the H1 — start body sections at ${hashes}.`, 0.5);
 
     const { internal, external } = parseLinks(body);
     if (internal.length < R.body.minInternalLinks) add("body-il", "warn", "No internal links detected", "Link to 1–2 related posts/pages — it distributes authority and keeps readers around.", 1.5);
@@ -269,9 +271,9 @@ function analyze() {
       if (firstPos !== -1 && wordsBefore <= R.body.firstKeywordWithinWords) add("body-intro", "pass", "Keyphrase in intro", `First use within the first ${R.body.firstKeywordWithinWords} words — good topical signal.`, 1.5);
       else if (firstPos !== -1) add("body-intro", "warn", "Keyphrase starts late", `First use is ~${wordsBefore} words in. State the topic within the first ${R.body.firstKeywordWithinWords} words.`, 1.5);
 
-      const inHead = heads.some(h => h.text.toLowerCase().includes(kw.toLowerCase()));
+      const inHead = heads.some(h => h.level >= lvl && h.text.toLowerCase().includes(kw.toLowerCase()));
       add("body-hkw", inHead ? "pass" : "warn", inHead ? "Keyphrase in a heading" : "No heading contains keyphrase",
-        inHead ? "Nice — reinforces structure." : `Work “${kw}” (or a variant) into one ## heading.`, 1);
+        inHead ? "Nice — reinforces structure." : `Work “${kw}” (or a variant) into one ${hashes} heading.`, 1);
     } else add("body-kw", "skip", "Body: no keyphrase set", "Set a focus keyphrase to check density, intro and heading usage.", 0);
 
     const f = flesch(body);
@@ -350,6 +352,50 @@ function smartTrim(s, max) {
   return (sp > max * 0.5 ? cut.slice(0, sp) : cut).replace(/[,:;\-.!?]+$/, "") + "…";
 }
 
+// Raw (markdown-intact) sentence splitter — block-aware so a heading line can
+// never glue itself to the next paragraph. Each result is an exact raw
+// substring, so a suggested fix maps byte-for-byte back onto the draft.
+const rawSentences = (t) => {
+  const out = [];
+  for (const block of (t || "").split(/\n\s*\n/)) {
+    for (const m of (block.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [])) {
+      const s = m.trim();
+      if (s && words(s).length > 1) out.push(s);
+    }
+  }
+  return out;
+};
+// Genuinely split a long sentence in two (not truncate): returns
+// {find, replace} against the raw draft, or null if no safe split point.
+function splitLongSentence(raw, maxWords) {
+  if (words(raw).length <= maxWords) return null;
+  if (/^\s*(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+|```|\||<)/.test(raw)) return null; // headings/quotes/lists/code/tables/HTML
+  // Mask URLs with equal-length spaces so indices map 1:1 back onto the raw text.
+  const masked = raw
+    .replace(/https?:\/\/\S+/g, (m) => " ".repeat(m.length))
+    .replace(/\]\([^)]*\)/g, (m) => " ".repeat(m.length));
+  const cands = [];
+  for (const m of masked.matchAll(/, (and|but|or|so|yet)\b/gi)) cands.push({ idx: m.index, end: m.index + m[0].length, pri: 0 });
+  for (const m of masked.matchAll(/;/g)) cands.push({ idx: m.index, end: m.index + 1, pri: 1 });
+  for (const m of masked.matchAll(/:| — | – /g)) cands.push({ idx: m.index, end: m.index + m[0].length, pri: 2 });
+  if (!cands.length) return null;
+  const mid = raw.length / 2;
+  const viable = cands.filter((c) => {
+    const left = raw.slice(0, c.idx), right = raw.slice(c.end);
+    return words(left).length >= 4 && words(right).length >= 4;
+  });
+  if (!viable.length) return null;
+  const bestPri = Math.min(...viable.map((c) => c.pri));
+  viable.sort((a, b) => Math.abs(a.idx - mid) - Math.abs(b.idx - mid));
+  const best = viable.find((c) => c.pri === bestPri) || viable[0];
+  let left = raw.slice(0, best.idx).replace(/[\s,;:—–-]+$/, "");
+  if (!/[.!?…]$/.test(left)) left += ".";
+  let right = raw.slice(best.end).replace(/^\s+/, "");
+  right = right.replace(/^[a-z]/, (ch) => ch.toUpperCase());
+  if (!/[.!?…]$/.test(right)) right += ".";
+  return { find: raw, replace: left + " " + right };
+}
+
 function suggestTitle(title, kw) {
   const R = RULES.rules.title;
   let t = title.trim().replace(/\s+/g, " ");
@@ -362,7 +408,7 @@ function suggestTitle(title, kw) {
 
 function renderSuggestions({ kw, title, summary, excerpt, body }) {
   const out = [];
-  const push = (h, why, text) => { if (text) out.push({ h, why, text }); };
+  const push = (h, why, text, fix) => { if (text) out.push({ h, why, text, fix }); };
   const R = RULES.rules;
 
   if (title.trim()) {
@@ -388,38 +434,71 @@ function renderSuggestions({ kw, title, summary, excerpt, body }) {
   const bw = words(body).length;
   if (bw > 0) {
     const heads = parseHeadings(body);
-    if (!heads.some(h => h.level <= 2))
-      push("Structure fix", "Add scannable sections — each H2 answers one question.",
-        "## What it is\n## Why it matters\n## How to do it\n## Mistakes to avoid\n## FAQ");
+    const lvl = RULES.rules.body.sectionLevel || 2, hashes = "#".repeat(lvl), tag = "H" + lvl;
+    const h2count = heads.filter((h) => h.level === lvl).length;
+    const h2need = Math.max(RULES.rules.body.minSections, Math.floor(bw / RULES.rules.body.wordsPerSection));
+    if (h2count < h2need) {
+      const spots = headingInsertions(body, kw);
+      if (spots.length) {
+        spots.forEach((sp, i) => push(
+          `Suggested heading ${i + 1} (${tag})`,
+          `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — working title below (rewrite it in your own words${kw ? ", ideally with the keyphrase" : ""}).`,
+          hashes + " " + sp.title,
+          { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" }
+        ));
+      } else {
+        push("Structure fix", "Add scannable sections — each heading answers one question. (No clear paragraphs detected, so place these by hand.)",
+          [hashes + " What it is", hashes + " Why it matters", hashes + " How to do it", hashes + " Mistakes to avoid", hashes + " FAQ"].join("\n"));
+      }
+    }
     if (kw && !heads.some(h => h.text.toLowerCase().includes(kw.toLowerCase())))
-      push("Heading idea", "Give crawlers one keyword-bearing H2.", `## ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`);
+      push("Heading idea", "Give crawlers one keyword-bearing section heading.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`);
     const { internal, external } = parseLinks(body);
     if (!internal.length) push("Internal link idea", "Keeps readers + authority in your cluster.", "Link a phrase to 1–2 related posts (e.g. “see our [beginner's guide](/… )”).");
     if (!external.length) push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.");
-    const longS = sentencesOf(body).filter(s => s.split(/\s+/).length > R.body.maxSentenceWords).slice(0, 2);
-    longS.forEach((s, i) => push(`Split long sentence ${i + 1}`, `Over ${R.body.maxSentenceWords} words — split at the comma/and.`, smartTrim(s, 140)));
+    const longS = rawSentences(body).filter((s) => words(s).length > R.body.maxSentenceWords).slice(0, 2);
+    longS.forEach((s) => {
+      const split = splitLongSentence(s, R.body.maxSentenceWords);
+      if (split) push("Split into two sentences", "Over " + R.body.maxSentenceWords + " words — genuine split below, ready to drop in (meaning preserved).", split.replace,
+        { find: split.find, replace: split.replace, verb: "Replace in draft" });
+      else {
+        const ws = s.split(/\s+/);
+        const mid = ws.slice(Math.max(0, Math.floor(ws.length / 2) - 2), Math.floor(ws.length / 2) + 2).join(" ");
+        push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no clean split point. Try breaking it near “…${mid}…”.`, s);
+      }
+    });
     const f = flesch(body);
     if (f !== null && f < RULES.rules.readability.fleschOkay)
       push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.");
   }
 
   els.suggestions.innerHTML = out.length ? out.map((s, i) =>
-    `<div class="sug"><h4>${esc(s.h)}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote><button class="btn small copy" data-i="${i}" type="button">Copy</button></div>`).join("")
+    `<div class="sug"><h4>${esc(s.h)}</h4><p class="hint">${esc(s.why)}</p><blockquote>${esc(s.text)}</blockquote>` +
+    (s.fix
+      ? `<button class="btn small copy" data-r="${i}" type="button">${esc(s.fix.verb || "Replace in draft")}</button>`
+      : `<button class="btn small copy" data-i="${i}" type="button">Copy</button>`) + `</div>`).join("")
     : `<p class="hint">Suggestions will appear here once there is something to review.</p>`;
-  els.suggestions.querySelectorAll(".copy").forEach(b => b.addEventListener("click", () => {
+  els.suggestions.querySelectorAll("[data-i]").forEach(b => b.addEventListener("click", () => {
     navigator.clipboard.writeText(out[+b.dataset.i].text).then(() => { b.textContent = "Copied!"; setTimeout(() => b.textContent = "Copy", 1200); });
+  }));
+  els.suggestions.querySelectorAll("[data-r]").forEach(b => b.addEventListener("click", () => {
+    const s = out[+b.dataset.r];
+    if (!s || !s.fix) return;
+    els.body.value = els.body.value.replace(s.fix.find, () => s.fix.replace);
+    analyze(); // re-runs: the fixed issue disappears, which is the confirmation
   }));
   els.suggestions._data = out;
 }
 
 function renderStats({ kw, title, summary, excerpt, body }, grade) {
   const bw = words(body).length;
+  const lvl = RULES.rules.body.sectionLevel || 2;
   const dens = kw && bw ? (keywordCount(body, kw) / bw * 100) : null;
   const f = flesch(body);
   const { internal, external } = parseLinks(body);
   const rows = [
     ["Focus keyphrase", kw ? esc(kw) + ` · ${keywordCount(title + " " + summary + " " + body, kw)}× total` : "<span class='hint'>not set</span>"],
-    ["Words", `${bw} · ${sentencesOf(body).length} sentences · ${parseHeadings(body).filter(h => h.level <= 2).length} H2s`],
+    ["Words", `${bw} · ${sentencesOf(body).length} sentences · ${parseHeadings(body).filter(h => h.level === lvl).length} H${lvl}s`],
     ["Keyword repetition (body)", dens === null ? "<span class='hint'>—</span>" : `${dens.toFixed(1)}% exact-match (over ~${(RULES.rules.body.keywordDensityGoodMax * 100).toFixed(0)}% = review for stuffing; density itself is not a ranking factor)`],
     ["Readability", f === null ? "<span class='hint'>need ~30+ words</span>" : `Flesch ${Math.round(f)} (${f >= RULES.rules.readability.fleschGood ? "good" : f >= RULES.rules.readability.fleschOkay ? "okay" : "dense"})` + (grade !== null && grade !== undefined ? ` · grade ~${Math.max(1, Math.round(grade))} · ${Math.max(1, Math.round(bw / 200))} min read` : "")],
     ["Links", `${internal.length} internal · ${external.length} external`],
@@ -632,6 +711,51 @@ function renderWriting(body) {
   return { grade };
 }
 
+/* ---------- Google announcements (written monthly by Actions into google-updates.json) ---------- */
+async function loadGoogleUpdates() {
+  const el = $("gupdates");
+  try {
+    const res = await fetch("./google-updates.json?t=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("no file yet");
+    const data = await res.json();
+    if (!data.items || !data.items.length) throw new Error("empty");
+    el.innerHTML = `<ul class="checks">` + data.items.slice(0, 10).map((i) =>
+      `<li><b><span class="badge ${/status/i.test(i.feed) ? "warn" : /docs/i.test(i.feed) ? "pass" : "engage"}">${esc(i.feed)}</span>` +
+      `<a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a></b>` +
+      `<p>${esc(i.date || "undated")}</p></li>`).join("") + `</ul>` +
+      `<p class="hint">Pulled ${esc(data.checked || "unknown")} from Google's official feeds (Search Central blog, docs updates, status dashboard). These are announcements — translate them into thresholds via the monthly review, they don't auto-change your scores.</p>`;
+  } catch {
+    el.innerHTML = `<p class="hint">Google's announcement feed appears here after the first scheduled pull (monthly, or run the workflow manually). Scores are unaffected until thresholds are reviewed.</p>`;
+  }
+}
+
+// Find paragraphs that deserve a section heading: returns [{para, title, preview}].
+// Titles are working drafts from each paragraph's own opening words — the
+// author rewrites them, but the PLACEMENT (the hard part) is detected.
+function headingInsertions(body, kw) {
+  const out = [];
+  const re = /[^\n]+(?:\n(?!\n)[^\n]+)*/g; // blocks separated by blank lines
+  let m, first = true;
+  while ((m = re.exec(body)) !== null) {
+    const block = m[0];
+    if (first) { first = false; continue; } // intro needs no heading
+    const trimmed = block.trim();
+    if (!trimmed || /^#{1,6}\s/.test(trimmed)) continue;
+    if (words(block).length < 25) continue;
+    const before = body.slice(0, m.index).trimEnd().split("\n").pop() || "";
+    if (/^#{1,6}\s/.test(before)) continue; // already has a heading
+    const plain = stripMdHtml(block).replace(/\s+/g, " ").trim();
+    let title = plain.split(" ").slice(0, 7).join(" ");
+    if (title.length > 52) { const cut = title.slice(0, 51); title = cut.slice(0, Math.max(cut.lastIndexOf(" "), 10)); }
+    title = title.replace(/[:;,.\-–—]+$/, "").trim();
+    if (!title) continue;
+    title = title[0].toUpperCase() + title.slice(1);
+    out.push({ para: block, title, preview: plain.slice(0, 60) });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
 /* ---------- Draft persistence / toolbar ---------- */
 function saveDraft() {
   localStorage.setItem(LS_DRAFT, JSON.stringify({
@@ -700,3 +824,4 @@ els.customUrl.value = localStorage.getItem(LS_CUSTOM_RULES) || "";
 
 loadDraft();
 loadRules();
+loadGoogleUpdates();

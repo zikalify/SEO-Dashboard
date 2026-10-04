@@ -1,0 +1,65 @@
+{
+  "checked": "2026-10-04",
+  "items": [
+    {
+      "feed": "Search docs updates",
+      "title": "Updated guidance on using generative AI content",
+      "link": "https://developers.google.com/search/updates#october-2026",
+      "date": "2026-10-01"
+    },
+    {
+      "feed": "Search Central Blog",
+      "title": "Announcing web multimodal Search performance reporting in Search Console",
+      "link": "https://developers.google.com/search/blog/2026/09/web-multimodal-in-sc",
+      "date": "2026-09-24"
+    },
+    {
+      "feed": "Search docs updates",
+      "title": "Added creator property and updated interactionStatistic in VideoObject structured data",
+      "link": "https://developers.google.com/search/updates#september-2026",
+      "date": "2026-09-24"
+    },
+    {
+      "feed": "Search Status Dashboard",
+      "title": "UPDATE: September 2026 spam update",
+      "link": "https://status.search.google.com/incidents/XhUDXP7A67iHCD2kmbVu",
+      "date": "2026-09-24"
+    },
+    {
+      "feed": "Search docs updates",
+      "title": "Added local business query support to the aggregator and supplier units",
+      "link": "https://developers.google.com/search/updates#september-2026",
+      "date": "2026-09-18"
+    },
+    {
+      "feed": "Search Central Blog",
+      "title": "Search Central Live Deep Dive Europe 2026: Meet the community speakers",
+      "link": "https://developers.google.com/search/blog/2026/09/scl-dd-europe-2026-community-speakers",
+      "date": "2026-09-16"
+    },
+    {
+      "feed": "Search docs updates",
+      "title": "Added documentation on adding a Search profile badge to your website",
+      "link": "https://developers.google.com/search/updates#september-2026",
+      "date": "2026-09-16"
+    },
+    {
+      "feed": "Search Central Blog",
+      "title": "Search Central Live India 2026: Bengaluru, We're Coming (For Real This Time)",
+      "link": "https://developers.google.com/search/blog/2026/09/search-central-live-india-2026",
+      "date": "2026-09-14"
+    },
+    {
+      "feed": "Search Central Blog",
+      "title": "Search Central Live is coming to Bogota and Ciudad de M\u00e9xico",
+      "link": "https://developers.google.com/search/blog/2026/09/search-central-live-mexico-and-colombia",
+      "date": "2026-09-08"
+    },
+    {
+      "feed": "Search docs updates",
+      "title": "Added documentation about regional differences in Search experience",
+      "link": "https://developers.google.com/search/updates#september-2026",
+      "date": "2026-09-08"
+    }
+  ]
+}

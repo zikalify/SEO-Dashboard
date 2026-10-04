@@ -79,13 +79,15 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 
 .deliver { background: rgba(76,195,138,.08); color: var(--text); border: 1px solid var(--muted); }
 #tone { margin-bottom: 10px; } #tone:empty { display: none; }
 #writing [data-w] { margin-top: 2px; }
+#gupdates a { color: var(--link); text-decoration: none; }
+#gupdates a:hover { text-decoration: underline; }
 .checks p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 
 .suggestions { display: grid; gap: 10px; }
 .sug { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; }
 .sug h4 { margin: 0 0 6px; font-size: 13.5px; }
 .sug p { margin: 0 0 8px; font-size: 13.5px; }
-.sug blockquote { margin: 0 0 8px; padding: 8px 10px; background: #0c1219; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; font-size: 13.5px; }
+.sug blockquote { margin: 0 0 8px; padding: 8px 10px; background: #0c1219; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; font-size: 13.5px; white-space: pre-line; }
 .sug .copy { font-size: 12px; padding: 5px 9px; }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 13.5px; }
 .stats dt { color: var(--muted); } .stats dd { margin: 0; font-variant-numeric: tabular-nums; }
