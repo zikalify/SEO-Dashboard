@@ -363,7 +363,7 @@ const maskUrls = (r) => (r || "")
 // Participles after commas ("program, called…", "Network, built on…") don't
 // count — that's exactly the "missing is" trap. Conservative by design: a miss
 // only costs a Replace button, a false hit publishes a fragment.
-const IRREG = new Set(("wrote,took,made,came,went,saw,knew,got,said,built,sent,spent,taught,thought,brought,bought,caught,chose,drove,spoke,broke,rose,fell,grew,met,paid,stood,understood,won").split(","));
+const IRREG = new Set(("wrote,took,made,came,went,saw,knew,got,said,built,sent,spent,taught,thought,brought,bought,caught,chose,drove,spoke,broke,rose,fell,grew,met,paid,stood,understood,won,arose,arisen,awoke,awoken,became,become,began,begun,blew,blown,broken,chosen,clung,crept,dealt,drew,drawn,dreamt,drank,drunk,ate,eaten,fallen,felt,fled,flung,flew,flown,forbade,forbidden,forgot,forgotten,forgave,forgiven,froze,frozen,gave,given,ground,hung,heard,held,hid,hidden,kept,knelt,laid,lain,leapt,leant,left,lent,lit,lost,meant,mistook,mistaken,overcame,overcome,rode,ridden,rang,rung,sank,sunk,sat,shook,shaken,shone,sang,sung,stole,stolen,stuck,struck,swore,sworn,swam,swum,tore,torn,threw,thrown,woke,woken,wore,worn,wove,woven,withdrew,withdrawn").split(","));
 const FIN_AUX = /\b(am|is|are|was|were|be|been|will|would|can|could|shall|should|may|might|must|have|has|had|do|does|did)\b/i;
 const NOT_SUBJ = /^(the|a|an|this|that|these|those|my|your|his|her|its|our|their|and|or|but|so|for|in|on|at|by|from|as|to|of|with|also|just|only|even|very|quite|rather|really|will|would|can|could|shall|should|may|might|must|have|has|had|do|does|did|are|is|was|were|am|be|been|that|which|who|not|no|more|most|less|than)$/i;
 const NONVERB_S = /^(this|that|these|those|thus|plus|minus|news|class|glass)$/i;
@@ -382,16 +382,21 @@ function hasFinite(t) {
     if (/^(he|she|it|they|we|you|i)$/i.test(prev) && (/[edsn]$/i.test(w) || IRREG.has(w.toLowerCase())) && !NONVERB_S.test(w)) return true;
     if (/^[A-Z][\w'-]*$/.test(prev) && !/^(and|or)$/i.test(prev) && !/^[A-Z]/.test(w) && (/s$/i.test(w) || IRREG.has(w.toLowerCase()) || /ed$/i.test(w)) && !NONVERB_S.test(w)) return true;
     if (/^(the|a|an|my|your|his|her|its|our|their|this|that)$/i.test(prev2) && /^[a-z]+$/.test(prev) && !/ly$/i.test(prev) && !/(ed|en)$/i.test(prev) && (/s$/i.test(w) || IRREG.has(w.toLowerCase()) || /ed$/i.test(w)) && !NONVERB_S.test(w)) return true;
+    if (/^[a-z]+s$/i.test(prev) && prev.length > 4 && !/(ss|us)$/i.test(prev) && (IRREG.has(w.toLowerCase()) || /ed$/i.test(w)) && w.length > 3) return true;
     if (/^[A-Z][\w'-]*$/.test(prev) && !/^(and|or)$/i.test(prev) && BASEVERBS.has(w.toLowerCase())) return true;
     if (/^[a-z]+s$/i.test(prev) && w.length > 3 && BASEVERBS.has(w.toLowerCase())) return true;
   }
   return false;
 }
-// Strip a trailing subordinate clause / appositive so the matrix clause can be
-// checked on its own ("…Network, where pros have…" → "…Network").
-const stripSub = (t) => (t || "")
-  .replace(/,\s*(where|which|who|whom|whose|that)\b.*$/i, "")
-  .replace(/,\s*(an?|the)\s+[^,;]+$/i, "");
+// Strip a trailing subordinate clause ("…Network, where pros have…" → "…Network")
+// so the matrix clause can be checked on its own. The ", an/the X" appositive
+// strips ONLY when verbless — ", the same goes…" has a verb, so it stays.
+const stripSub = (t) => {
+  let s = (t || "").replace(/,\s*(where|which|who|whom|whose|that)\b.*$/i, "");
+  const ap = s.match(/,\s*(an?|the)\s+[^,;]+$/i);
+  if (ap && !hasFinite(ap[0])) s = s.slice(0, ap.index);
+  return s;
+};
 // fragments. Allows pronouns/determiners, capitalized words, gerunds, numbers,
 // singular nouns ("team ships…"), and plural nouns with an auxiliary nearby
 // ("partners can…", "pros from X have…"). Blocks preposition/conjunction-led
@@ -793,13 +798,24 @@ const WORDY_FIXES = [ // [wordy phrase, concise replacement]
   ["absolutely essential", "essential"], ["basic fundamentals", "fundamentals"],
   ["could possibly", "could"], ["might possibly", "might"], ["very unique", "unique"],
 ];
-const TYPO_FIXES = { // common misspellings -> correction (whole word, case preserved)
+const TYPO_BASE = { // hand-picked core (wins on conflict with the dictionary file)
   alot: "a lot", teh: "the", wich: "which", recieve: "receive", seperate: "separate",
   definately: "definitely", neccessary: "necessary", occured: "occurred",
   occurance: "occurrence", untill: "until", goverment: "government",
   enviroment: "environment", calender: "calendar", accomodate: "accommodate",
   noticable: "noticeable", tommorow: "tomorrow", writting: "writing",
   begining: "beginning", arguement: "argument", suprise: "surprise",
+};
+// Full dictionary lives in typos.js (window.TYPO_EXTRA, ~4000 entries curated
+// from Wikipedia's common-misspellings list). Merged here (lowercased);
+// TYPO_BASE wins on conflict.
+const TYPO_FIXES = {};
+for (const [k, v] of Object.entries(Object.assign({}, (typeof window !== "undefined" && window.TYPO_EXTRA) || {}, TYPO_BASE))) TYPO_FIXES[k.toLowerCase()] = v;
+// Single combined pattern (longest-first) — one scan instead of thousands.
+const TYPO_RE = new RegExp("\\b(" + Object.keys(TYPO_FIXES).sort((a, b) => b.length - a.length).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")\\b", "gi");
+const typoRight = (m) => {
+  const right = TYPO_FIXES[m.toLowerCase()];
+  return /^[A-Z]/.test(m) ? right[0].toUpperCase() + right.slice(1) : right;
 };
 const GRAMMAR_FIXES = [ // deterministic grammar slips
   ["should of", "should have"], ["could of", "could have"], ["would of", "would have"],
@@ -827,11 +843,20 @@ function analyzeWriting(body) {
   const issues = [];
   const push = (cat, title, detail, fix) => { if (issues.length < 100) issues.push({ cat, title, detail, fix }); };
 
-  // Correctness: typos + grammar slips (one-click fix each)
-  for (const [wrong, right] of Object.entries(TYPO_FIXES))
-    for (const m of phraseMatches(body, wrong))
-      push("Correctness", `Spelling: “${m}”`, `Usually spelled “${/^[A-Z]/.test(m) ? cap1(right) : right}”.`,
-        { find: m, replace: /^[A-Z]/.test(m) ? cap1(right) : right });
+  // Correctness: dictionary typos, one scan (skips URLs + code spans), one-click fix each.
+  {
+    const skipSpans = [];
+    for (const m of body.matchAll(/https?:\/\/\S+/g)) skipSpans.push([m.index, m.index + m[0].length]);
+    for (const m of body.matchAll(/`[^`\n]+`/g)) skipSpans.push([m.index, m.index + m[0].length]);
+    const inSkip = (i) => skipSpans.some(([a, b]) => i >= a && i < b);
+    TYPO_RE.lastIndex = 0;
+    let m, n = 0;
+    while ((m = TYPO_RE.exec(body)) !== null && n < 25) {
+      if (inSkip(m.index)) continue;
+      n++;
+      push("Correctness", `Spelling: “${m[0]}”`, `Usually spelled “${typoRight(m[0])}”.`, { find: m[0], replace: typoRight(m[0]) });
+    }
+  }
   for (const [wrong, right] of GRAMMAR_FIXES)
     for (const m of phraseMatches(body, wrong))
       push("Correctness", `Grammar: “${m}”`, `The standard form is “${right}”.`, { find: m, replace: right });
@@ -983,13 +1008,17 @@ function analyzeWriting(body) {
   }
   // Correctness: sentence fragments — no finite main verb (the "missing is").
   // Skips headings, lists, quotes, code, short interjections, and imperatives.
-  const IMPERATIVES = /^(see|read|click|link|cite|add|check|note|remember|consider|try|use|make|write|keep|share|follow|visit|download|subscribe|buy|compare|take|give|get|set|put|find|look|start|stop|contact|call|email|please)\b/i;
+  const IMPERATIVES = /^(see|read|click|link|cite|add|check|note|remember|consider|try|use|make|write|keep|share|follow|visit|download|subscribe|buy|compare|take|give|get|set|put|find|look|start|stop|contact|call|email|please|go|select|open|run|type|press|enter|scroll|tap|pick|close|launch|install|uninstall|update|restart|reboot|delete|remove|submit|send|stay|apply)\b/i;
   let fragN = 0;
   for (const s of rawSentences(body)) {
     if (/^\s*(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+|```|\||<)/.test(s)) continue;
     const plain = stripMdHtml(s).replace(/\s+/g, " ").trim();
     if (words(plain).length < 8) continue;
     if (IMPERATIVES.test(plain)) continue;
+    // How-to openers ("To uninstall…, go…" / "From the list, select…"): judge
+    // what follows the comma — an imperative or a complete clause is fine.
+    const opened = plain.replace(/^(?:to\s+[a-z]+\b[^,]*|(?:from|under|in|on|at|for|with|after|before)\b[^,]*),\s*/i, "");
+    if (opened !== plain && (IMPERATIVES.test(opened) || hasFinite(stripSub(opened)))) continue;
     if (!hasFinite(stripSub(plain))) {
       if (fragN++ >= 5) break;
       const pm = plain.match(/,?\s*(built|based|modeled|designed|aimed|focused|centered)\b/i);
