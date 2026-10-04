@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SEO Article Review — live SEO draft checker</title>
+<title>SEO Checker</title>
 <meta name="description" content="Paste a title, summary, excerpt and article draft. Get live SEO feedback and concrete rewrite suggestions. Rules load from a live seo-rules.json file so thresholds stay up to date." />
 <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -60,6 +60,24 @@
       <button id="btn-sample" class="btn ghost" type="button">Load sample</button>
       <button id="btn-clear" class="btn ghost" type="button">Clear</button>
       <button id="btn-copy-report" class="btn" type="button">Copy report</button>
+    </div>
+
+    <div class="field">
+      <span class="field-head"><span>Hashtags <em>(auto-built for social — × drops duds)</em></span><span class="count" id="c-hash"></span></span>
+      <div id="hashtags" class="tagbox"><p class="hint">Hashtags appear once your draft has names, products or versions.</p></div>
+      <div class="toolbar">
+        <button id="btn-copy-hash" class="btn small" type="button">Copy hashtags</button>
+        <button id="btn-reset-hash" class="btn small ghost" type="button">Reset</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="field-head"><span>Article tags <em>(CMS-ready, comma-separated)</em></span><span class="count" id="c-tags"></span></span>
+      <div id="articletags" class="tagbox"><p class="hint">Tags appear here — company, product and versions first.</p></div>
+      <div class="toolbar">
+        <button id="btn-copy-tags" class="btn small" type="button">Copy tags</button>
+        <button id="btn-reset-tags" class="btn small ghost" type="button">Reset</button>
+      </div>
     </div>
   </section>
 

@@ -19,7 +19,7 @@ const FALLBACK_RULES = {
     title: { minChars: 40, maxChars: 60, hardMaxChars: 70, rewriteSafeMin: 51, rewriteSafeMax: 55, keywordAtStartMaxPos: 15 },
     summary: { minChars: 120, maxChars: 155, hardMaxChars: 170 },
     excerpt: { minChars: 80, maxChars: 160, hardMaxChars: 200 },
-    body: { minWords: 300, goodWords: 1000, minParagraphs: 3, maxSentenceWords: 25, longSentenceShareWarn: 0.25, maxParagraphWords: 120, keywordDensityMin: 0.005, keywordDensityMax: 0.025, keywordDensityGoodMax: 0.02, firstKeywordWithinWords: 100, sectionLevel: 2, minSections: 1, wordsPerSection: 350, minInternalLinks: 1, minExternalLinks: 1, transitionWordsMinShare: 0.2, passiveVoiceMaxShare: 0.15 },
+    body: { minWords: 300, goodWords: 1000, minParagraphs: 3, maxSentenceWords: 25, longSentenceShareWarn: 0.25, maxParagraphWords: 120, keywordDensityMin: 0.005, keywordDensityMax: 0.025, keywordDensityGoodMax: 0.02, firstKeywordWithinWords: 100, sectionLevel: 2, minSections: 1, wordsPerSection: 350, siteDomain: "", minInternalLinks: 1, minExternalLinks: 1, transitionWordsMinShare: 0.2, passiveVoiceMaxShare: 0.15 },
     readability: { fleschGood: 60, fleschOkay: 40 },
   },
   powerWords: ["ultimate", "proven", "essential", "complete", "best", "guide", "how", "why", "new", "free", "easy", "fast", "secret", "top"],
@@ -46,7 +46,9 @@ const stripMdHtml = (s) => (s || "")
   .replace(/```[\s\S]*?```/g, " ")
   .replace(/<[^>]+>/g, " ")
   .replace(/!?\[[^\]]*\]\([^)]*\)/g, " ")
-  .replace(/[#>*_`~|-]/g, " ")
+  .replace(/^(-{3,}|\*{3,}|_{3,})\s*$/gm, " ")
+  .replace(/(^|\s)-(?=\s|$)/gm, "$1 ")
+  .replace(/[#>*`_~|]/g, " ")
   .replace(/https?:\/\/\S+/g, " ")
   .replace(/\s+/g, " ").trim();
 
@@ -73,15 +75,17 @@ function parseHeadings(raw) {
   for (const m of (raw || "").matchAll(/<h([1-6])[^>]*>(.*?)<\/h\1>/gi)) out.push({ level: +m[1], text: m[2].replace(/<[^>]+>/g, "").trim() });
   return out;
 }
-function parseLinks(raw) {
+function parseLinks(raw, domain) {
   const links = [];
   for (const m of (raw || "").matchAll(/\[([^\]]*)\]\(([^)]+)\)/g)) links.push(m[2].trim());
   for (const m of (raw || "").matchAll(/<a\s[^>]*href=["']([^"']+)["']/gi)) links.push(m[1].trim());
   for (const m of (raw || "").matchAll(/(^|\s)(https?:\/\/[^\s)>\]]+)/g)) links.push(m[2].trim());
   const seen = new Set(), uniq = [];
   for (const l of links) { if (!seen.has(l)) { seen.add(l); uniq.push(l); } }
-  const internal = uniq.filter(h => h.startsWith("/") || h.startsWith("#"));
-  const external = uniq.filter(h => /^https?:\/\//i.test(h));
+  const dom = (domain || "").toLowerCase();
+  // House style (Neowin): internal links are absolute URLs on the site domain.
+  const internal = uniq.filter(h => h.startsWith("/") || h.startsWith("#") || (dom && h.toLowerCase().includes(dom)));
+  const external = uniq.filter(h => /^https?:\/\//i.test(h) && !(dom && h.toLowerCase().includes(dom)));
   return { all: uniq, internal, external };
 }
 const TRANSITIONS = ["however", "therefore", "for example", "in addition", "moreover", "meanwhile", "consequently", "instead", "although", "because", "finally", "first", "second", "also", "but", "so", "then", "furthermore", "overall", "in contrast", "on the other hand"];
@@ -204,7 +208,7 @@ function analyze() {
     }
     if (heads.some(h => h.level === 1) || /^#\s/m.test(body)) add("body-h1", "warn", "Avoid H1 inside the body", `Your title is the H1 — start body sections at ${hashes}.`, 0.5);
 
-    const { internal, external } = parseLinks(body);
+    const { internal, external } = parseLinks(body, R.body.siteDomain);
     if (internal.length < R.body.minInternalLinks) add("body-il", "warn", "No internal links detected", "Link to 1–2 related posts/pages — it distributes authority and keeps readers around.", 1.5);
     else add("body-il", "pass", `${internal.length} internal link${internal.length > 1 ? "s" : ""}`, "Good for crawl depth and sessions.", 1.5);
     if (external.length < R.body.minExternalLinks) add("body-el", "warn", "No external citations", "Cite 1+ authoritative source — it grounds claims and matches what rankers do.", 1);
@@ -296,6 +300,7 @@ function render(checks, vals) {
   renderSuggestions(vals, (id) => shown.find((c) => c.id === id), max);
   const writing = renderWriting(vals.body);
   renderStats(vals, writing.grade);
+  renderTags(vals);
 
   clearTimeout(render._t);
   render._t = setTimeout(saveDraft, 300);
@@ -326,7 +331,39 @@ const rawSentences = (t) => {
 const maskUrls = (r) => (r || "")
   .replace(/https?:\/\/\S+/g, (m) => " ".repeat(m.length))
   .replace(/\]\([^)]*\)/g, (m) => " ".repeat(m.length));
-// First words that can plausibly start a sentence — guards clause splits against
+// Finite-verb detection: does this span contain a complete clause's main verb?
+// Participles after commas ("program, called…", "Network, built on…") don't
+// count — that's exactly the "missing is" trap. Conservative by design: a miss
+// only costs a Replace button, a false hit publishes a fragment.
+const IRREG = new Set(("wrote,took,made,came,went,saw,knew,got,said,built,sent,spent,taught,thought,brought,bought,caught,chose,drove,spoke,broke,rose,fell,grew,met,paid,stood,understood,won").split(","));
+const FIN_AUX = /\b(am|is|are|was|were|be|been|will|would|can|could|shall|should|may|might|must|have|has|had|do|does|did)\b/i;
+const NOT_SUBJ = /^(the|a|an|this|that|these|those|my|your|his|her|its|our|their|and|or|but|so|for|in|on|at|by|from|as|to|of|with|also|just|only|even|very|quite|rather|really|will|would|can|could|shall|should|may|might|must|have|has|had|do|does|did|are|is|was|were|am|be|been|that|which|who|not|no|more|most|less|than)$/i;
+const NONVERB_S = /^(this|that|these|those|thus|plus|minus|news|class|glass)$/i;
+// Common base-form verbs: after a plural/capitalized subject these are nearly
+// always verbs ("teams need", "developers build") — never nouns in that slot.
+const BASEVERBS = new Set(("build,launch,ship,run,make,take,give,get,put,set,cut,read,grow,sell,send,spend,teach,reach,offer,open,cover,test,track,trust,earn,need,help,use,show,bring,buy,keep,hold,lead,meet,move,drive,write,speak,break,choose,pay,play,plan,save,serve,share,start,state,watch,win,work,call,join,face").split(","));
+function hasFinite(t) {
+  if (FIN_AUX.test(t)) return true;
+  const raw = t.split(/\s+/);
+  const clean = (w) => (w || "").replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
+  for (let i = 0; i < raw.length; i++) {
+    const w = clean(raw[i]);
+    if (!w || w.length < 3) continue;
+    const prev = clean(raw[i - 1]), prev2 = clean(raw[i - 2]);
+    if (/[,;:—–-]$/.test(raw[i - 1] || "") && (IRREG.has(w.toLowerCase()) || /e[nd]$/i.test(w))) continue; // participle after comma
+    if (/^(he|she|it|they|we|you|i)$/i.test(prev) && (/[edsn]$/i.test(w) || IRREG.has(w.toLowerCase())) && !NONVERB_S.test(w)) return true;
+    if (/^[A-Z][\w'-]*$/.test(prev) && !/^(and|or)$/i.test(prev) && !/^[A-Z]/.test(w) && (/s$/i.test(w) || IRREG.has(w.toLowerCase()) || /ed$/i.test(w)) && !NONVERB_S.test(w)) return true;
+    if (/^(the|a|an|my|your|his|her|its|our|their|this|that)$/i.test(prev2) && /^[a-z]+$/.test(prev) && !/ly$/i.test(prev) && !/(ed|en)$/i.test(prev) && (/s$/i.test(w) || IRREG.has(w.toLowerCase()) || /ed$/i.test(w)) && !NONVERB_S.test(w)) return true;
+    if (/^[A-Z][\w'-]*$/.test(prev) && !/^(and|or)$/i.test(prev) && BASEVERBS.has(w.toLowerCase())) return true;
+    if (/^[a-z]+s$/i.test(prev) && w.length > 3 && BASEVERBS.has(w.toLowerCase())) return true;
+  }
+  return false;
+}
+// Strip a trailing subordinate clause / appositive so the matrix clause can be
+// checked on its own ("…Network, where pros have…" → "…Network").
+const stripSub = (t) => (t || "")
+  .replace(/,\s*(where|which|who|whom|whose|that)\b.*$/i, "")
+  .replace(/,\s*(an?|the)\s+[^,;]+$/i, "");
 // fragments. Allows pronouns/determiners, capitalized words, gerunds, numbers,
 // singular nouns ("team ships…"), and plural nouns with an auxiliary nearby
 // ("partners can…", "pros from X have…"). Blocks preposition/conjunction-led
@@ -340,6 +377,13 @@ const startsWell = (s) => {
   const toks = s.trim().split(/\s+/).map((t) => t.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, ""));
   const t0 = toks[0] || "", t1 = toks[1] || "";
   if (!t0) return false;
+  // Aux-led ("Will be more likely…") is only a clause if a subject follows —
+  // otherwise the subject was left behind in the other half.
+  if (AUXV.test(t0)) {
+    const subj = (t) => /^(he|she|it|they|we|you|i|this|that|these|those|there|here|my|your|his|her|its|our|their|the|a|an)$/i.test(t) || /^[A-Z0-9]/.test(t) || /^[a-z]{4,}s$/i.test(t);
+    if (subj(toks[1] || "") || subj(toks[2] || "")) return true;
+    return false;
+  }
   if (/^[A-Z0-9]/.test(t0)) return true;
   if (/^(he|she|it|they|we|you|i|this|that|these|those|there|here|my|your|his|her|its|our|their|the|a|an)$/i.test(t0)) return true;
   if (/^[a-z]+ing$/i.test(t0)) return true;
@@ -364,7 +408,16 @@ function splitLongSentence(raw, maxWords) {
   const masked = maskUrls(raw);
   const cands = []; // {idx, pri, left, right}
   const all = (re) => { const o = []; let m; re.lastIndex = 0; while ((m = re.exec(masked)) !== null) { o.push(m); if (o.length > 12) break; } return o; };
-  for (const m of all(/, (and|but|or|so|yet)\b/gi)) cands.push({ idx: m.index, pri: 0, left: raw.slice(0, m.index), right: raw.slice(m.index + m[0].length) });
+  for (const m of all(/, (and|but|or|so|yet)\b/gi)) {
+    const after = raw.slice(m.index + m[0].length).replace(/^\s+/, "");
+    // Elliptical subject ("…for them and will be more…"): the second clause
+    // dropped its subject — restore it with "Then they" ("Then they will be…").
+    // Only when the aux is followed by be/have/do (rules out inversion like
+    // "so will costs"), and only when the bare clause fails the starter check.
+    const am = /^(and|but)$/i.test(m[1]) && after.match(/^(will|would|can|could|shall|should|may|might|must)\s+(be|have|do|been|being)\b/i);
+    if (am && !startsWell(after)) cands.push({ idx: m.index, pri: 0, left: raw.slice(0, m.index), right: `Then they ${after}` });
+    else cands.push({ idx: m.index, pri: 0, left: raw.slice(0, m.index), right: after });
+  }
   for (const m of all(/;/g)) cands.push({ idx: m.index, pri: 1, left: raw.slice(0, m.index), right: raw.slice(m.index + 1) });
   for (const m of all(/:| — | – /g)) cands.push({ idx: m.index, pri: 2, left: raw.slice(0, m.index), right: raw.slice(m.index + m[0].length) });
   for (const m of all(/, where /gi)) cands.push({ idx: m.index, pri: 3, left: raw.slice(0, m.index), right: raw.slice(m.index + ", where ".length) });
@@ -379,9 +432,13 @@ function splitLongSentence(raw, maxWords) {
         cands.push({ idx: li, pri: 3, left: raw.slice(0, li), right: `This ${m[1].trim()}${m[2]}` });
     }
   }
-  for (const m of all(/ and /g)) {
-    if (masked[m.index - 2] === ",") continue; // comma-conjunction handled above
-    cands.push({ idx: m.index, pri: 4, left: raw.slice(0, m.index), right: raw.slice(m.index + 5) });
+  for (const m of all(/ (and|but|or) /g)) {
+    if (masked[m.index - 1] === ",") continue; // comma-conjunction handled above
+    const after = raw.slice(m.index + m[0].length).replace(/^\s+/, "");
+    // Same elliptical-subject repair without the comma ("…for them and will be…").
+    const am = after.match(/^(will|would|can|could|shall|should|may|might|must)\s+(be|have|do|been|being)\b/i);
+    if (am && !startsWell(after)) cands.push({ idx: m.index, pri: 4, left: raw.slice(0, m.index), right: `Then they ${after}` });
+    else cands.push({ idx: m.index, pri: 4, left: raw.slice(0, m.index), right: raw.slice(m.index + m[0].length) });
   }
   for (const m of all(/ to (check|confirm|verify) they /gi))
     cands.push({ idx: m.index, pri: 5, left: raw.slice(0, m.index), right: `They can ${m[1]} whether they ` + raw.slice(m.index + m[0].length) });
@@ -389,7 +446,10 @@ function splitLongSentence(raw, maxWords) {
   const viable = cands.filter((c) => {
     const right = c.right.replace(/^\s+/, "");
     if ((c.pri === 0 || c.pri === 4) && inEnumeration(c.left)) return false;
-    return words(c.left).length >= 4 && words(right).length >= 4 && startsWell(right);
+    if (words(c.left).length < 4 || words(right).length < 4 || !startsWell(right)) return false;
+    // Both halves must stand alone as complete clauses — never publish a
+    // fragment ("…Network." / "Will be more likely…").
+    return hasFinite(stripSub(c.left)) && hasFinite(stripSub(right));
   });
   if (!viable.length) return null;
   const bestPri = Math.min(...viable.map((c) => c.pri));
@@ -470,7 +530,7 @@ function tailCut(text, maxWords) {
     while (parts.length > 1 && DANGLING.has(parts[parts.length - 1].toLowerCase())) parts.pop();
     kept = parts.join(" ");
     const n = words(kept).length;
-    if (n >= 10 && n <= maxWords && total - n >= 2 && (!best || n > best.n)) best = { kept: finishSentence(kept), n };
+    if (n >= 10 && n <= maxWords && total - n >= 2 && hasFinite(stripSub(kept)) && (!best || n > best.n)) best = { kept: finishSentence(kept), n };
   }
   if (!best) return null;
   return { kept: best.kept, tail: best.kept.split(/\s+/).slice(-4).join(" ") };
@@ -483,7 +543,7 @@ function shortenFix(raw, maxWords) {
   if (split) return { kind: "split", replace: split.replace, note: "splits it in two at a clean clause break (meaning preserved)" };
   const tight = tightenSentence(raw);
   const base = tight ? tight.text : raw;
-  if (tight && words(base).length <= maxWords)
+  if (tight && words(base).length <= maxWords && hasFinite(stripSub(base)))
     return { kind: "tighten", replace: finishSentence(base), note: `trims filler (${tight.note})` };
   const cut = tailCut(base, maxWords);
   if (cut) return { kind: "cut", replace: cut.kept, note: `${tight ? "trims filler, then " : ""}cuts everything after “…${cut.tail}” — check nothing vital is lost` };
@@ -552,7 +612,7 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
     }
     if (kw && !heads.some(h => h.text.toLowerCase().includes(kw.toLowerCase())))
       push("Heading idea", "Give crawlers one keyword-bearing section heading.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`, null, true, "body-hkw");
-    const { internal, external } = parseLinks(body);
+    const { internal, external } = parseLinks(body, R.body.siteDomain);
     if (!internal.length) {
       const anchors = linkAnchors(body);
       if (anchors.length) push("Internal link idea", "These exact phrases in your draft would make strong anchors — link one to a related post in your CMS.",
@@ -619,9 +679,11 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
     if (!s || !s.fix) return;
     const idx = els.body.value.indexOf(s.fix.find);
     if (idx === -1) { const t = b.textContent; b.textContent = "Gone"; setTimeout(() => b.textContent = t, 1200); return; }
-    els.body.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    els.body.focus({ preventScroll: true });
+    // Select first (so focus reveals it), focus without preventScroll (so the
+    // box itself scrolls to the selection), then settle the page around it.
     els.body.setSelectionRange(idx, idx + s.fix.find.length);
+    els.body.focus();
+    els.body.scrollIntoView({ block: "nearest" });
     els.body.classList.add("flash");
     setTimeout(() => els.body.classList.remove("flash"), 1000);
   }));
@@ -640,12 +702,12 @@ function renderStats({ kw, title, summary, excerpt, body }, grade) {
   const lvl = RULES.rules.body.sectionLevel || 2;
   const dens = kw && bw ? (keywordCount(body, kw) / bw * 100) : null;
   const f = flesch(body);
-  const { internal, external } = parseLinks(body);
+  const { internal, external } = parseLinks(body, RULES.rules.body.siteDomain);
   const rows = [
     ["Focus keyphrase", kw ? esc(kw) + ` · ${keywordCount(title + " " + summary + " " + body, kw)}× total` : "<span class='hint'>not set</span>"],
     ["Words", `${bw} · ${sentencesOf(body).length} sentences · ${parseHeadings(body).filter(h => h.level === lvl).length} H${lvl}s`],
-    ["Keyword repetition (body)", dens === null ? "<span class='hint'>—</span>" : `${dens.toFixed(1)}% exact-match (over ~${(RULES.rules.body.keywordDensityGoodMax * 100).toFixed(0)}% = review for stuffing; density itself is not a ranking factor)`],
-    ["Readability", f === null ? "<span class='hint'>need ~30+ words</span>" : `Flesch ${Math.round(f)} (${f >= RULES.rules.readability.fleschGood ? "good" : f >= RULES.rules.readability.fleschOkay ? "okay" : "dense"})` + (grade !== null && grade !== undefined ? ` · grade ~${Math.max(1, Math.round(grade))} · ${Math.max(1, Math.round(bw / 200))} min read` : "")],
+    ["Keyword repetition (body)", dens === null ? "<span class='hint'>—</span>" : `${dens.toFixed(1)}% exact-match ${meter(Math.min(100, dens / 3 * 100), dens <= RULES.rules.body.keywordDensityGoodMax ? "" : dens <= RULES.rules.body.keywordDensityMax ? "warn" : "bad")} (over ~${(RULES.rules.body.keywordDensityGoodMax * 100).toFixed(0)}% = review for stuffing; density itself is not a ranking factor)`],
+    ["Readability", f === null ? "<span class='hint'>need ~30+ words</span>" : `Flesch ${Math.round(f)} ${meter(f, f >= RULES.rules.readability.fleschGood ? "" : f >= RULES.rules.readability.fleschOkay ? "warn" : "bad")} (${f >= RULES.rules.readability.fleschGood ? "good" : f >= RULES.rules.readability.fleschOkay ? "okay" : "dense"})` + (grade !== null && grade !== undefined ? ` · grade ~${Math.max(1, Math.round(grade))} · ${Math.max(1, Math.round(bw / 200))} min read` : "")],
     ["Links", `${internal.length} internal · ${external.length} external`],
     ["Rules", `SEO rules v${esc(RULES.version || "?")} (thresholds updated ${esc(RULES.updated || "?")})`],
   ];
@@ -675,7 +737,7 @@ const WORDY_FIXES = [ // [wordy phrase, concise replacement]
   ["due to the fact that", "because"], ["in order to", "to"],
   ["in spite of the fact that", "although"], ["in the event that", "if"],
   ["at this point in time", "now"], ["in the near future", "soon"],
-  ["are able to", "can"], ["is able to", "can"],
+  ["are able to", "can"], ["is able to", "can"], ["are going to be", "will be"], ["is going to be", "will be"],
   ["has the ability to", "can"], ["have the ability to", "can"],
   ["a large number of", "many"], ["a wide variety of", "many"], ["a variety of", "several"],
   ["first and foremost", "first"], ["each and every", "every"],
@@ -710,6 +772,7 @@ const WEAK_ALTS = { // vague words -> stronger options (shown, not auto-applied)
   thing: ["name the specifics"], things: ["name the specifics"], stuff: ["details", "material"],
 };
 const HEDGES = ["in my opinion", "i think", "i believe", "sort of", "kind of", "perhaps", "possibly"];
+const STOPWORDS = new Set(("the,a,an,and,or,but,of,to,in,on,for,with,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,have,has,had,do,does,did,this,that,these,those,it,its,they,their,them,we,our,you,your,he,she,his,her,not,no,more,most,than,then,so,such,when,where,which,who,what,how,all,any,each,other,into,over,after,before,between,through,during,about,up,out,off,if,else,while,because,until,just,also,even,still,already,very,quite,rather,really,there,here,been,being,said,says,like,well,much,many,own,same,only,first,second,new,used,using,often,across,within,without,around,another,less").split(","));
 const QUALIFIERS = ["really", "just", "quite", "rather"];
 const CASUAL = ["gonna", "wanna", "kinda", "yeah", "cool", "awesome", "dumb"];
 
@@ -743,7 +806,72 @@ function analyzeWriting(body) {
   for (const m of (body.match(/[.!?…]\s+[a-z]/g) || []).slice(0, 5)) {
     const letter = m.slice(-1);
     push("Correctness", "Sentence starts lowercase", `“…${m.trim()}” — capitalize “${letter}”.`,
-      { find: m, replace: m.slice(0, -1) + letter.toUpperCase() });
+      { find: m, replace: m.slice(0, -1) + letter.toUpperCase(), caseSensitive: true });
+  }
+  // Correctness: a/an agreement ("a apple" → "an apple"), with the classic
+  // exceptions (silent-h → an, yoo-sound → a, vowel-sounded capitals → an).
+  for (const m of (body.match(/\b(a|an) ([A-Za-z][\w'-]*)/g) || []).slice(0, 12)) {
+    const art = m.split(/\s+/)[0], word = m.split(/\s+/)[1];
+    let want = /[aeiou]/i.test(word[0]) ? "an" : "a";
+    if (/^(hour|honest|heir|honou?r)/i.test(word)) want = "an";
+    if (/^(university|uniform|unique|user|used|useful|union|united|unicorn|usual|utility|utah)\b/i.test(word)) want = "a";
+    if (/^[A-Z]+$/.test(word) && !/^(NATO|NASA|LASER|RADAR|SCUBA|SONAR|UNESCO)$/.test(word)) want = /^U/.test(word) ? "a" : (/^[FHLMNRSX]/.test(word) ? "an" : want);
+    if (art.toLowerCase() !== want) {
+      const rep = (/^[A-Z]/.test(art) ? want[0].toUpperCase() + want.slice(1) : want) + " " + word;
+      push("Correctness", `Use “${rep.split(" ")[0]}” before “${word}”`, `“${m}” breaks a/an agreement — one click fixes it.`, { find: m, replace: rep });
+    }
+  }
+  // Correctness: lone lowercase "i" → "I" (skips "i.e." and friends).
+  {
+    const re = /(^|[\s("'])i(?=[\s.,!?;:'")\]]|$)/g;
+    let m, n = 0;
+    while ((m = re.exec(body)) !== null && n < 10) {
+      if (/^\.\w/.test(body.slice(m.index + m[0].length, m.index + m[0].length + 2))) continue;
+      push("Correctness", "Capitalize “I”", `“…${m[0].trim()}…” — the pronoun is always capital.`, { find: m[0], replace: m[0].slice(0, -1) + "I", caseSensitive: true });
+      n++;
+    }
+  }
+  // Correctness: commonly confused words — flagged with a reminder, never
+  // auto-fixed (only you know which one you meant). One card per set, max 4.
+  const CONFUSABLES = [
+    { any: ["you're", "your"], note: "you're = you are (“you're welcome”); your = belonging to you (“your draft”)" },
+    { any: ["they're", "their", "there"], note: "they're = they are; their = belonging to them; there = that place" },
+    { any: ["it's", "its"], note: "it's = it is; its = belonging to it" },
+    { any: ["affect", "effect"], note: "affect = to influence (verb); effect = result (noun)" },
+    { any: ["than"], note: "than = comparison (“bigger than”); then = time/next (“first this, then that”) — check you didn't swap them" },
+    { any: ["lose", "loose"], note: "lose = misplace / fail to win; loose = not tight" },
+    { any: ["complement", "compliment"], note: "complement = completes; compliment = praise" },
+    { any: ["principal", "principle"], note: "principal = main person/thing; principle = rule" },
+    { any: ["cite", "sight"], note: "cite = quote as a source; sight = view (site = website needs no check)" },
+    { any: ["weather", "whether"], note: "weather = rain/shine; whether = if" },
+    { any: ["who's", "whose"], note: "who's = who is; whose = belonging to whom" },
+    { any: ["except"], note: "except = excluding (“all except Monday”); accept = receive — check you didn't swap them" },
+    { any: ["advise"], note: "advise = to counsel (verb); advice = counsel itself (noun)" },
+    { any: ["breathe"], note: "breathe = to inhale (verb); breath = one inhalation (noun)" },
+  ];
+  let confN = 0;
+  for (const c of CONFUSABLES) {
+    if (confN >= 4) break;
+    const found = c.any.filter((w) => phraseMatches(body, w).length);
+    if (found.length) { confN++; push("Correctness", `Check: ${found.join(" / ")}`, c.note + "."); }
+  }
+  // Correctness: sentence fragments — no finite main verb (the "missing is").
+  // Skips headings, lists, quotes, code, short interjections, and imperatives.
+  const IMPERATIVES = /^(see|read|click|link|cite|add|check|note|remember|consider|try|use|make|write|keep|share|follow|visit|download|subscribe|buy|compare|take|give|get|set|put|find|look|start|stop|contact|call|email|please)\b/i;
+  let fragN = 0;
+  for (const s of rawSentences(body)) {
+    if (/^\s*(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+|```|\||<)/.test(s)) continue;
+    const plain = stripMdHtml(s).replace(/\s+/g, " ").trim();
+    if (words(plain).length < 8) continue;
+    if (IMPERATIVES.test(plain)) continue;
+    if (!hasFinite(stripSub(plain))) {
+      if (fragN++ >= 5) break;
+      const pm = plain.match(/,?\s*(built|based|modeled|designed|aimed|focused|centered|named|called)\b/i);
+      push("Correctness", "Sentence may be missing its main verb",
+        pm ? `“…${pm[0].trim()}…” probably needs “…is ${pm[1].toLowerCase()}…”. No auto-fix here — repair the verb first, then re-check.`
+           : "No finite verb found — every sentence needs one (is/are/was/knew/built…). No auto-fix here — add the verb first.",
+        null);
+    }
   }
 
   // Clarity: wordy phrases (one-click concise replacement).
@@ -767,6 +895,36 @@ function analyzeWriting(body) {
   for (const [weak, alts] of Object.entries(WEAK_ALTS)) {
     const n = phraseMatches(body, weak).length;
     if (n) push("Engagement", `Vague word: “${weak}” (${n}×)`, `Consider: ${alts.join(", ")}.`);
+  }
+  // Engagement: thesaurus — most-repeated content words get synonym options
+  // (natural variation reads better and avoids stuffing-like repetition).
+  const stops = STOPWORDS;
+  const SYNONYMS = {
+    important: ["crucial", "vital", "key"], significant: ["major", "notable", "considerable"],
+    show: ["demonstrate", "reveal", "indicate"], demonstrate: ["show", "illustrate", "prove"],
+    use: ["employ", "apply"], help: ["assist", "support", "enable"], get: ["obtain", "receive", "secure"],
+    make: ["create", "produce", "build"], provide: ["offer", "supply", "deliver"], need: ["require", "demand"],
+    improve: ["strengthen", "refine", "enhance"], increase: ["raise", "boost", "grow"],
+    decrease: ["reduce", "lower", "cut"], begin: ["start", "launch", "open"], end: ["close", "finish", "conclude"],
+    part: ["portion", "section", "segment"], idea: ["concept", "notion", "approach"],
+    problem: ["issue", "challenge", "obstacle"], answer: ["response", "reply", "result"],
+    change: ["shift", "adjust", "transform"], different: ["distinct", "varied", "diverse"],
+    difficult: ["hard", "challenging", "tough"], easy: ["simple", "straightforward"],
+    fast: ["quick", "rapid", "swift"], slow: ["gradual"], large: ["big", "major", "substantial"],
+    small: ["minor", "modest"], story: ["account", "report", "narrative"], report: ["account", "review", "write-up"],
+    system: ["platform", "setup", "framework"], program: ["scheme", "initiative", "schedule"],
+    company: ["firm", "business", "organisation"], team: ["group", "crew", "unit"], organization: ["firm", "business", "outfit"],
+  };
+  {
+    const freq = {};
+    for (const w of words(body)) {
+      const k = w.toLowerCase().replace(/[^a-z'-]/g, "");
+      if (k.length < 5 || STOPWORDS.has(k) || WEAK_ALTS[k]) continue;
+      freq[k] = (freq[k] || 0) + 1;
+    }
+    Object.entries(freq).filter(([w, n]) => n >= 4 && SYNONYMS[w])
+      .sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .forEach(([w, n]) => push("Engagement", `Overused: “${w}” (${n}×)`, `Vary it: ${SYNONYMS[w].join(", ")}. Natural variation reads better and avoids repetition that looks stuffed.`));
   }
   // Engagement: sentence variety — same opener 3+ times.
   const openers = {};
@@ -818,7 +976,7 @@ function applyWritingFix(i) {
     const re = new RegExp(escRe(fix.find), "g");
     els.body.value = els.body.value.replace(re, fix.replace);
   } else {
-    const re = new RegExp(escRe(fix.find), "i");
+    const re = new RegExp(escRe(fix.find), fix.caseSensitive ? "" : "i");
     els.body.value = els.body.value.replace(re, (m) => {
       if (/^[A-Z]/.test(m) && /^[a-z]/.test(fix.replace)) return cap1(fix.replace);
       return fix.replace;
@@ -828,6 +986,11 @@ function applyWritingFix(i) {
 }
 
 const CAT_CLASS = { Correctness: "fail", Clarity: "warn", Engagement: "engage", Delivery: "deliver" };
+
+const meter = (pct, cls) => {
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  return `<span class="meter${cls ? " " + cls : ""}" role="img" aria-label="${p}%"><span style="width:${p}%"></span></span>`;
+};
 
 function renderWriting(body) {
   const toneEl = $("tone"), listEl = $("writing");
@@ -842,10 +1005,14 @@ function renderWriting(body) {
   const tone = writingTone(body);
   const grade = gradeLevel(body);
   const mins = Math.max(1, Math.round(bw / 200));
-  const cats = ["Correctness", "Clarity", "Engagement", "Delivery"]
-    .map((c) => `${c}: ${issues.filter((x) => x.cat === c).length}`).join(" · ");
+  const catCounts = ["Correctness", "Clarity", "Engagement", "Delivery"]
+    .map((c) => ({ c, n: issues.filter((x) => x.cat === c).length }));
+  const scale = Math.max(4, ...catCounts.map((x) => x.n));
+  const catClass = { Correctness: "bad", Clarity: "warn", Engagement: "blue", Delivery: "" };
 
-  toneEl.innerHTML = `<div class="sug"><h4>Tone: ${esc(tone.label)} · Grade ~${grade === null ? "–" : Math.max(1, Math.round(grade))} · ${mins} min read</h4><p class="hint">${esc(tone.advice)} ${esc(cats)}</p></div>`;
+  toneEl.innerHTML = `<div class="sug"><h4>Tone: ${esc(tone.label)} · Grade ~${grade === null ? "–" : Math.max(1, Math.round(grade))} · ${mins} min read</h4>` +
+    catCounts.map(({ c, n }) => `<div class="tone-row"><b>${c}</b>${meter(n / scale * 100, n ? catClass[c] : "")}<span class="n">${n}</span></div>`).join("") +
+    `<p class="hint">${esc(tone.advice)}</p></div>`;
 
   currentWritingFixes = issues.map((x) => ({ fix: x.fix, label: `${x.cat}: ${x.title}` }));
   const shown = issues.slice(0, 25);
@@ -980,14 +1147,15 @@ function headingInsertions(body, kw) {
   const out = [];
   const re = /[^\n]+(?:\n(?!\n)[^\n]+)*/g; // blocks separated by blank lines
   let m, first = true;
+  const isHtmlH = (s) => /^\s*<h[1-6][\s>]/.test(s || "");
   while ((m = re.exec(body)) !== null) {
     const block = m[0];
     if (first) { first = false; continue; } // intro needs no heading
     const trimmed = block.trim();
-    if (!trimmed || /^#{1,6}\s/.test(trimmed)) continue;
-    if (words(block).length < 25) continue;
+    if (!trimmed || /^#{1,6}\s/.test(trimmed) || isHtmlH(trimmed)) continue;
+    if (words(block).length < 40) continue; // a section worth heading is a few sentences, not one
     const before = body.slice(0, m.index).trimEnd().split("\n").pop() || "";
-    if (/^#{1,6}\s/.test(before)) continue; // already has a heading
+    if (/^#{1,6}\s/.test(before) || isHtmlH(before)) continue; // already has a heading
     const crafted = craftHeading(block);
     const plain = stripMdHtml(block).replace(/\s+/g, " ").trim();
     if (crafted) out.push({ para: block, title: crafted.title, reason: crafted.reason, preview: plain.slice(0, 60), draft: !!crafted.draft });
@@ -995,6 +1163,132 @@ function headingInsertions(body, kw) {
     if (out.length >= 4) break;
   }
   return out;
+}
+
+/* ---------- Hashtags + article tags (generated from the draft) ----------
+   Hashtags: PascalCase, alphanumeric only — dots never survive ("Sonnet 5.5"
+   becomes #Sonnet55, because "#Sonnet 5.5" is two broken tags). Article tags
+   keep natural spelling ("Sonnet 5.5"). Company/product/version first. */
+const LS_REMOVED = "seo-review-removed-v1";
+let removedTags = { h: [], t: [] };
+try { removedTags = Object.assign({ h: [], t: [] }, JSON.parse(localStorage.getItem(LS_REMOVED) || "{}")); } catch { removedTags = { h: [], t: [] }; }
+let lastHash = [], lastTags = [], lastVals = null;
+const saveRemoved = () => localStorage.setItem(LS_REMOVED, JSON.stringify(removedTags));
+
+function hashtagify(wordsArr, digits) {
+  const glue = new Set(["of", "the", "a", "an", "and", "for", "with", "de", "van"]);
+  let s = wordsArr.filter((w) => w && !glue.has(w.toLowerCase()))
+    .map((w) => w[0].toUpperCase() + w.slice(1)).join("") + (digits || "");
+  s = s.replace(/[^A-Za-z0-9]/g, "");
+  if (!/^[A-Za-z]/.test(s) || s.length < 2 || s.length > 24) return null;
+  return "#" + s;
+}
+
+function extractTagData(body, title, kw) {
+  // Join with a period so entities can't span the title/body boundary ("GPT-6" + "Intro words" ≠ "GPT-6 Intro").
+  const plain = stripMdHtml((((title || "").trim().replace(/[.?!…]+$/, "") + ". ") + (body || ""))).replace(/\s+/g, " ").trim();
+  const seqCount = (s) => (s.match(/([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)+)/g) || []).length;
+  const listSent = (idx) => {
+    const s0 = Math.max(0, plain.lastIndexOf(".", idx - 1), plain.lastIndexOf("?", idx - 1), plain.lastIndexOf("!", idx - 1));
+    let e = plain.length;
+    for (const p of [".", "?", "!"]) { const i = plain.indexOf(p, idx); if (i !== -1 && i < e) e = i; }
+    const sent = plain.slice(s0, e);
+    return /(like|including|such as)\b/i.test(sent) && seqCount(sent) >= 3;
+  };
+  // Product + version combos: "Sonnet 5.5", "Claude Sonnet 5.5", "GPT-6".
+  const combos = [];
+  for (const m of plain.matchAll(/([A-Z][\w&'-]*(?:\s+[A-Z][\w&'-]*)*)\s+v?(\d+\.\d+(?:\.\d+)?)/g)) {
+    const prod = m[1].trim().split(/\s+/).slice(-2).join(" ");
+    if (/^(the|a|an|in|on|by|late|early|end|over|under|more|less)$/i.test(prod.split(" ")[0])) continue;
+    combos.push({ prod, ver: m[2] });
+  }
+  for (const m of plain.matchAll(/\b([A-Z]{2,}[- ]?\d[\w.]*)\b/g)) {
+    if (/week|month|year/i.test(m[1])) continue;
+    combos.push({ prod: m[1], ver: "" });
+  }
+  // Named entities, most-mentioned first; list-members excluded.
+  const ent = new Map();
+  for (const m of plain.matchAll(/([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*)/g)) {
+    const t = m[1].trim().replace(/^(the|a|an) /i, "").replace(/'s\b/gi, "");
+    const n = t.split(/\s+/).length;
+    if (!t || n > 4) continue;
+    if (n === 1) {
+      if (t.length < 3 || STOPWORDS.has(t.toLowerCase())) continue;
+      const c = plain.split(new RegExp(`\\b${escRe(t)}\\b`, "gi")).length - 1;
+      if (c < 2) continue;
+      ent.set(t, (ent.get(t) || 0) + c);
+    } else {
+      if (listSent(m.index)) continue;
+      ent.set(t, (ent.get(t) || 0) + 1);
+    }
+  }
+  const rankedEnt = [...ent.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  // Frequent keywords + repeated acronyms.
+  const freq = {};
+  for (const w of words(plain)) {
+    const k = w.toLowerCase().replace(/[^a-z'-]/g, "");
+    if (k.length < 4 || STOPWORDS.has(k)) continue;
+    freq[k] = (freq[k] || 0) + 1;
+  }
+  const keys = Object.entries(freq).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w]) => w);
+  const acros = [...new Set([...plain.matchAll(/\b([A-Z]{2,})\b/g)].map((m) => m[1]))]
+    .filter((a) => plain.split(new RegExp(`\\b${a}\\b`, "g")).length - 1 >= 2).slice(0, 4);
+
+  // Article tags: versions + entities first, then keyphrase, then keywords.
+  const tags = [], seenT = new Set();
+  const addT = (t) => { t = (t || "").trim().replace(/\s+/g, " "); if (!t || t.length > 60) return; const k = t.toLowerCase(); if (!seenT.has(k)) { seenT.add(k); tags.push(t); } };
+  for (const c of combos) addT(c.ver ? `${c.prod} ${c.ver}` : c.prod);
+  for (const e of rankedEnt.slice(0, 6)) addT(e);
+  if (kw && kw.trim() && kw.trim().length <= 60) addT(kw.trim());
+  for (const a of acros) addT(a);
+  for (const k of keys) {
+    if (tags.some((t) => new RegExp(`\\b${escRe(k)}\\b`, "i").test(t))) continue; // already covered ("claude" inside "Claude Sonnet")
+    addT(k);
+  }
+
+  // Hashtags: version combos lead, then entities, then the keyphrase.
+  const hash = [], seenH = new Set();
+  const addH = (h) => { if (!h) return; const k = h.toLowerCase(); if (!seenH.has(k)) { seenH.add(k); hash.push(h); } };
+  for (const c of combos) {
+    const pw = c.prod.split(/[- ]/).filter(Boolean).slice(-3);
+    const digits = (c.ver || "").replace(/\./g, "");
+    addH(hashtagify(pw, digits));
+    if (hash.length >= 10) break;
+  }
+  for (const e of rankedEnt) {
+    if (hash.length >= 10) break;
+    addH(hashtagify(e.split(/\s+/).slice(0, 3), ""));
+  }
+  if (kw && kw.trim()) addH(hashtagify(kw.trim().split(/\s+/).slice(0, 3), ""));
+  // Drop bare duplicates when a versioned extension exists ("Claude Sonnet"
+  // next to "Claude Sonnet 5.5"; "#ClaudeSonnet" next to "#ClaudeSonnet55").
+  const extendsWithVersion = (shorter, longer) =>
+    longer.toLowerCase().startsWith(shorter.toLowerCase()) &&
+    /[\s.\-]*v?\d/.test(longer.slice(shorter.length));
+  const dedup = (list) => list.filter((t, i) => !list.some((u, j) => j !== i && extendsWithVersion(t, u)));
+  return { hash: dedup(hash).slice(0, 10), tags: dedup(tags).slice(0, 14) };
+}
+
+function renderTags(vals) {
+  lastVals = vals;
+  const data = extractTagData(vals.body, vals.title, vals.keyphrase);
+  lastHash = data.hash.filter((h) => !removedTags.h.includes(h.toLowerCase()));
+  lastTags = data.tags.filter((t) => !removedTags.t.includes(t.toLowerCase()));
+  const he = $("hashtags"), te = $("articletags");
+  he.innerHTML = lastHash.length
+    ? lastHash.map((h, i) => `<span class="chip">${esc(h)}<button data-rh="${i}" type="button" title="Remove">×</button></span>`).join("")
+    : `<p class="hint">Hashtags appear once your draft has names, products or versions.</p>`;
+  te.innerHTML = lastTags.length
+    ? lastTags.map((t, i) => `<span class="chip tag">${esc(t)}<button data-rt="${i}" type="button" title="Remove">×</button></span>`).join("")
+    : `<p class="hint">Tags appear here — company, product and versions first.</p>`;
+  $("c-hash").textContent = lastHash.length ? lastHash.length + " tags" : "";
+  $("c-tags").textContent = lastTags.length ? lastTags.length + " tags" : "";
+  he.querySelectorAll("[data-rh]").forEach((b) => b.addEventListener("click", () => {
+    removedTags.h.push(lastHash[+b.dataset.rh].toLowerCase()); saveRemoved(); renderTags(lastVals);
+  }));
+  te.querySelectorAll("[data-rt]").forEach((b) => b.addEventListener("click", () => {
+    removedTags.t.push(lastTags[+b.dataset.rt].toLowerCase()); saveRemoved(); renderTags(lastVals);
+  }));
 }
 
 /* ---------- Undo (one-click reversal for every programmatic edit) ----------
@@ -1125,6 +1419,20 @@ $("btn-copy-report").addEventListener("click", (e) => {
 });
 
 $("btn-undo").addEventListener("click", undoLast);
+$("btn-copy-hash").addEventListener("click", (e) => {
+  navigator.clipboard.writeText(lastHash.join(" ")).then(() => {
+    const b = e.currentTarget; b.textContent = "Copied!";
+    setTimeout(() => b.textContent = "Copy hashtags", 1200);
+  });
+});
+$("btn-reset-hash").addEventListener("click", () => { removedTags.h = []; saveRemoved(); if (lastVals) renderTags(lastVals); });
+$("btn-copy-tags").addEventListener("click", (e) => {
+  navigator.clipboard.writeText(lastTags.join(", ")).then(() => {
+    const b = e.currentTarget; b.textContent = "Copied!";
+    setTimeout(() => b.textContent = "Copy tags", 1200);
+  });
+});
+$("btn-reset-tags").addEventListener("click", () => { removedTags.t = []; saveRemoved(); if (lastVals) renderTags(lastVals); });
 
 loadDraft();
 loadRules();

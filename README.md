@@ -9,11 +9,17 @@ Fields (all optional): **focus keyphrase, title, article summary** (doubles as m
 
 **House style — heading level:** `seo-rules.json → rules.body.sectionLevel` sets the section header the whole app works with (`3` = Neowin's `###` H3 style, `2` = standard `##`). Every heading check, the keyphrase-in-heading check, the structure template, the auto-placed heading insertions, and the stats readout follow it automatically — no code changes to switch styles.
 
+**House style — site domain:** `rules.body.siteDomain` (`neowin.net`) tells link detection which absolute URLs count as internal. Neowin links internally with full URLs, so without this every link looked external.
+
+## Hashtags + article tags (generated from your draft)
+
+Below the article box, the app extracts **hashtags** and **article tags** live from your title + body — company, product and versions first (`Anthropic`, `Claude Sonnet 5.5`, `GPT-6`), then keyphrase and frequent keywords. The version rule you asked about is baked in: dots never survive in hashtags (`Sonnet 5.5` → `#Sonnet55`, `GPT-6` → `#GPT6`, capped at sensible lengths) but are kept in article tags (`Sonnet 5.5`, `GPT-6`). Chips you don't like get ×-ed away (persisted), with Copy buttons emitting space-joined hashtags and comma-separated tags, plus Reset to restore.
+
 ## Writing assistant (Grammarly-style, rule-based)
 
 Below the SEO checks, the **Writing assistant** panel reviews the article body live, grouped the way Grammarly groups them:
 
-- **Correctness** (red): common typos (`teh→the`, `definately→definitely`…), `should of→should have`, repeated words, double spaces, space-before-punctuation, lowercase sentence starts — all with one-click **Apply fix**.
+- **Correctness** (red): common typos (`teh→the`, `definately→definitely`…), `should of→should have`, a/an agreement (`a apple→an apple`, silent-h and acronym exceptions included), lone lowercase `i→I`, repeated words, double spaces, space-before-punctuation, lowercase sentence starts, commonly confused words (`affect/effect`, `you're/your`…) with usage reminders, and missing-main-verb fragments (`…built on…` → needs `…is built on…`) — all with one-click **Apply fix** except confusables and fragments, which need human judgment.
 - **Clarity** (amber): 25+ wordy phrases (`due to the fact that→because`, `in order to→to`…) with one-click fixes, `very + adjective` upgrades (`very good→excellent`), qualifier overload (`really/just/quite`).
 - **Engagement** (blue): vague words with stronger alternatives (`good→strong/solid/compelling`), repeated sentence openers.
 - **Delivery** (grey): hedging, slang, exclamation overload, plus a **tone meter** (Confident / Cautious / Casual / Enthusiastic), **grade level**, and **reading time**.
