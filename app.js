@@ -326,10 +326,32 @@ const rawSentences = (t) => {
 const maskUrls = (r) => (r || "")
   .replace(/https?:\/\/\S+/g, (m) => " ".repeat(m.length))
   .replace(/\]\([^)]*\)/g, (m) => " ".repeat(m.length));
-// First words that can plausibly start a sentence (pronouns, determiners,
-// capitalized nouns, gerunds) — guards bare-clause splits against fragments.
-const STARTER = /^(he|she|it|they|we|you|i|this|that|these|those|there|here|my|your|his|her|its|our|their|the|a|an|[A-Z][\w'-]*|\w+ing)$/;
-const startsWell = (s) => STARTER.test((s.trim().split(/\s+/)[0] || "").replace(/^[^A-Za-z]+/, ""));
+// First words that can plausibly start a sentence — guards clause splits against
+// fragments. Allows pronouns/determiners, capitalized words, gerunds, numbers,
+// singular nouns ("team ships…"), and plural nouns with an auxiliary nearby
+// ("partners can…", "pros from X have…"). Blocks preposition/conjunction-led
+// fragments ("across regions…") and probable verb-first fragments ("competes…").
+const AUXV = /^(will|would|can|could|shall|should|may|might|must|have|has|had|do|does|did|are|is|was|were|am|be|been)$/i;
+const NO_START = /^(and|or|but|so|yet|nor|for|in|on|at|by|from|as|to|of|with|through|across|after|before|during|without|within|between|among|beyond|despite|toward|towards|upon|about|into|over|under|around|along|alongside|until|unless|though|although|because|since|while|where|when|which|who|that|than|also|just|only|even|still|already|very|quite|rather|really)$/i;
+// Inside an example-list ("firms like A, B, and C") no conjunction split or cut:
+// it would orphan list items on either side ("…Deloitte. Novo Nordisk will…").
+const inEnumeration = (left) => /(like|including|such as|e\.g\.)\s[^.!?]*,[^.!?]*$/i.test(left);
+const startsWell = (s) => {
+  const toks = s.trim().split(/\s+/).map((t) => t.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, ""));
+  const t0 = toks[0] || "", t1 = toks[1] || "";
+  if (!t0) return false;
+  if (/^[A-Z0-9]/.test(t0)) return true;
+  if (/^(he|she|it|they|we|you|i|this|that|these|those|there|here|my|your|his|her|its|our|their|the|a|an)$/i.test(t0)) return true;
+  if (/^[a-z]+ing$/i.test(t0)) return true;
+  if (NO_START.test(t0)) return false;
+  if (AUXV.test(t1)) return true;
+  if (/^(in|on|at|from|with|through|across|for|of|to)$/i.test(t1)) {
+    if (/\b(will|would|can|could|shall|should|may|might|must|have|has|had|do|does|did|are|is|was|were|am|be|been)\b/i.test(toks.slice(2).join(" "))) return true;
+    return false;
+  }
+  if (t0.length > 3 && /(ed|es|s)$/i.test(t0)) return false;
+  return true;
+};
 // Genuinely split a long sentence in two (not truncate): returns
 // {find, replace} against the raw draft, or null if no safe split point.
 // Patterns, best first: comma-conjunction, semicolon, colon/dash,
@@ -366,6 +388,7 @@ function splitLongSentence(raw, maxWords) {
   const mid = raw.length / 2;
   const viable = cands.filter((c) => {
     const right = c.right.replace(/^\s+/, "");
+    if ((c.pri === 0 || c.pri === 4) && inEnumeration(c.left)) return false;
     return words(c.left).length >= 4 && words(right).length >= 4 && startsWell(right);
   });
   if (!viable.length) return null;
@@ -441,6 +464,8 @@ function tailCut(text, maxWords) {
   for (const i of cuts) {
     let kept = text.slice(0, i).replace(/[\s,;:—–-]+$/, "").trim();
     if (/[\d,]$/.test(kept)) continue; // never cut inside a number ("46,000")
+    if (inEnumeration(kept)) continue; // never cut inside an example-list
+    if (/^,\s*(and |or |but )?[A-Z]/.test(text.slice(i))) continue; // dropped text continues the list (", Capgemini…")
     const parts = kept.split(/\s+/);
     while (parts.length > 1 && DANGLING.has(parts[parts.length - 1].toLowerCase())) parts.pop();
     kept = parts.join(" ");
@@ -528,8 +553,18 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
     if (kw && !heads.some(h => h.text.toLowerCase().includes(kw.toLowerCase())))
       push("Heading idea", "Give crawlers one keyword-bearing section heading.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`, null, true, "body-hkw");
     const { internal, external } = parseLinks(body);
-    if (!internal.length) push("Internal link idea", "Keeps readers + authority in your cluster.", "Link a phrase to 1–2 related posts (e.g. “see our [beginner's guide](/… )”).", null, true, "body-il");
-    if (!external.length) push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.", null, true, "body-el");
+    if (!internal.length) {
+      const anchors = linkAnchors(body);
+      if (anchors.length) push("Internal link idea", "These exact phrases in your draft would make strong anchors — link one to a related post in your CMS.",
+        anchors.map((a) => `“${a}”`).join("\n"), null, true, "body-il");
+      else push("Internal link idea", "Keeps readers + authority in your cluster.", "Link a phrase to 1–2 related posts (e.g. “see our [beginner's guide](/… )”).", null, true, "body-il");
+    }
+    if (!external.length) {
+      const claims = claimSentences(body);
+      if (claims.length) push("Citation idea", "Statistics and strong claims need backing — pin a source to the exact sentence that makes the claim.",
+        claims.join("\n"), null, true, "body-el");
+      else push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.", null, true, "body-el");
+    }
     const longS = rawSentences(body).filter((s) => words(s).length > R.body.maxSentenceWords).slice(0, 2);
     longS.forEach((s) => {
       const fix = shortenFix(s, R.body.maxSentenceWords);
@@ -824,7 +859,7 @@ function renderWriting(body) {
 }
 
 // Words that must never end a heading (they dangle: "...eligible will be", "...adept with").
-const DANGLING = new Set(("a,an,the,and,or,but,to,of,with,for,in,on,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,that,which,who,whom,whose,when,where,while,until,unless,though,although,because,since,able,likely,adept,capable,responsible,available,ready,willing,eager,prone,accustomed,subject,due,per,via,than,so,yet,nor,both,either,such,more,most,alongside,across,through,throughout,within,without,among,between,beyond,despite,during,except,toward,towards,upon,around,very,just,quite,rather,up,out,off,away").split(","));
+const DANGLING = new Set(("a,an,the,and,or,but,to,of,with,for,in,on,at,by,from,as,is,are,was,were,be,been,will,would,can,could,shall,should,may,might,must,that,which,who,whom,whose,when,where,while,until,unless,though,although,because,since,able,likely,adept,capable,responsible,available,ready,willing,eager,prone,accustomed,subject,helps,allows,enables,lets,makes,gives,offers,provides,means,involves,includes,requires,needs,uses,brings,takes,gets,puts,keeps,shows,due,per,via,than,so,yet,nor,both,either,such,more,most,alongside,across,through,throughout,within,without,among,between,beyond,despite,during,except,toward,towards,upon,around,very,just,quite,rather,up,out,off,away").split(","));
 const AUDIENCE_BLOCK = /^(example|instance|starters?|one (more )?thing|the (record|moment)|now|better or worse)$/i;
 
 // Compress an opening line into a title: drop throat-clearing ("By training…",
@@ -833,6 +868,7 @@ const AUDIENCE_BLOCK = /^(example|instance|starters?|one (more )?thing|the (reco
 function compressTitle(s, maxLen) {
   let t = (s || "").replace(/\s+/g, " ").trim();
   t = t.replace(/^by ([a-z]+ing)\b/i, "$1").replace(/^([a-z]+ing) (up|out|off|away)\b/i, "$1");
+  t = t.replace(/\b(quite|really|very|just|rather|pretty|fairly)\s+(?=[a-z])/gi, "");
   t = t.replace(/\b([A-Za-z]+)s (that|who) are ([a-z]+)\b/, (mm, n, r, adj) => adj + " " + n + "s");
   if (t.length > maxLen) { const cut = t.slice(0, maxLen - 1); const sp = cut.lastIndexOf(" "); t = sp > 10 ? cut.slice(0, sp) : cut; }
   t = t.replace(/[:;,.\-–—]+$/, "").trim();
@@ -920,9 +956,15 @@ function craftHeading(block) {
     if (score > bestScore) { bestScore = score; bestEnt = { text, count: 1 }; }
   }
   if (bestEnt) return { title: `The ${bestEnt.text}`, reason: `it opens on ${bestEnt.text}` };
-  const first = plain.split(/(?<=[.!?…])\s+/)[0] || plain;
-  const t = compressTitle(first, 52);
-  if (t.split(" ").length >= 3) return { title: t, reason: "distilled from the opening line", draft: true };
+  // Fallback: compress an opening line — skipping content-free openers
+  // ("The program is quite interesting…") in favour of the next informative
+  // sentence. Still a draft, never final.
+  const openers = plain.split(/(?<=[.!?…])\s+/).slice(0, 3);
+  for (const sent of openers) {
+    if (/^(the|this|that|these|those|it)\b.{0,25}?\b(is|are|was|were)\b\s*(quite|really|very|just|rather|pretty|fairly|so|too)?\s*(interesting|important|great|good|nice|amazing|awesome|cool|big|small|useful|helpful|key|crucial|excellent|bad)\b/i.test(sent.trim())) continue;
+    const t = compressTitle(sent, 52);
+    if (t.split(" ").length >= 3) return { title: t, reason: "distilled from the opening line", draft: true };
+  }
   return null;
 }
 
@@ -989,6 +1031,39 @@ let doneChecks = {};
 try { doneChecks = JSON.parse(localStorage.getItem(LS_DONE) || "{}"); } catch { doneChecks = {}; }
 function saveDone() { localStorage.setItem(LS_DONE, JSON.stringify(doneChecks)); }
 function resetDone() { doneChecks = {}; saveDone(); }
+
+// Anchor phrases already in the draft that deserve links: capitalized entities
+// (names, programs, places) counted OUTSIDE existing link markup and headings,
+// most-repeated first. Returns up to 3 display strings.
+function linkAnchors(body) {
+  const unlinked = (body || "")
+    .replace(/\[[^\]]*\]\([^)]*\)/g, (m) => " ".repeat(m.length))
+    .replace(/<a\b.*?<\/a>/gis, (m) => " ".repeat(m.length))
+    .split("\n").filter((l) => !/^\s*#{1,6}\s/.test(l)).join("\n");
+  const counts = new Map();
+  for (const m of unlinked.matchAll(/([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)+)/g)) {
+    const t = m[1].trim().replace(/^(the|a|an) /i, "");
+    const n = t.split(" ").length;
+    if (!t || n < 2 || n > 5) continue;
+    counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t]) => t);
+}
+
+// Sentences making checkable claims (numbers, superlatives, studies) that don't
+// already carry a link — quoted back so the author pins the source exactly.
+function claimSentences(body) {
+  const out = [];
+  for (const s of rawSentences(body)) {
+    if (/\[.*?\]\(.*?\)|<a\s/i.test(s)) continue; // already linked
+    const plain = stripMdHtml(s);
+    if (words(plain).length < 8) continue;
+    if (/\d/.test(plain) || /\b(first|best|only|most|never|always|none|prov(es?|en)|show(s|n)?|found|stud(y|ies)|research|report|survey|data|percent|%)\b/i.test(plain))
+      out.push("“" + smartTrim(plain, 110) + "”");
+    if (out.length >= 2) break;
+  }
+  return out;
+}
 
 /* ---------- Draft persistence / toolbar ---------- */
 function saveDraft() {
