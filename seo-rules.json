@@ -1,14 +1,16 @@
 {
-  "version": "2026.10.04-r4",
-  "updated": "2026-10-04",
-  "notes": "Timeless SEO thresholds for article drafts: snippet-length limits imposed by search-result UI, structural checks (headings, links, depth), keyword-placement principles, and readability science. These change very slowly, if at all -- no feeds, no auto-updates, nothing to maintain. Tune any value and redeploy; the app follows this file. sectionLevel 3 matches the Neowin CMS (H3 section headers) -- set it to 2 for a standard H2 site and all checks, suggestions and templates follow automatically.",
+  "version": "2026.10.07-r5",
+  "updated": "2026-10-07",
+  "notes": "SEO thresholds for article drafts, re-audited 2026-10-07 against Google's own documentation. Two principles drive the numbers. (1) Search-result truncation is a PIXEL-WIDTH constraint on the device, not a character count -- there is no character limit on <title> or <meta description>, Google rewrites both, and what survives is an estimate (~55-60 chars desktop, ~120-155 chars description). (2) There is no ranking factor for word count, keyword density, Flesch, emoji or CTA phrasing, so none of those are scored as hard failures; they are reported as craft advice. Structural checks (headings, internal/external links) are gated behind minWordsForStructure, because a 200-word news brief genuinely does not need subheadings and telling writers to add them is the single biggest source of clutter. minWordsForList / ForFaq / ForConclusion are deliberately high: those are format suggestions, not correctness, and only pay off in pieces long enough to have a format. sectionLevel 3 matches the Neowin CMS (H3 section headers) -- set it to 2 for a standard H2 site and all checks, suggestions and templates follow automatically. Tune any value and redeploy; the app follows this file.",
   "sources": [
     "https://developers.google.com/search/docs/fundamentals/seo-starter-guide",
+    "https://developers.google.com/search/docs/fundamentals/creating-helpful-content",
     "https://developers.google.com/search/docs/appearance/title-link",
     "https://developers.google.com/search/docs/appearance/snippet",
-    "https://zyppy.com/seo/meta-title-tag-length/",
-    "https://ahrefs.com/seo/glossary/keyword-density",
-    "https://www.semrush.com/blog/meta-description/"
+    "https://developers.google.com/search/docs/appearance/google-images",
+    "https://developers.google.com/search/docs/appearance/structured-data/faqpage",
+    "https://developers.google.com/search/blog/2023/08/howto-faq-changes",
+    "https://developers.google.com/search/blog/2021/08/update-to-generating-page-titles"
   ],
   "rules": {
     "title": {
@@ -35,6 +37,7 @@
     "body": {
       "minWords": 300,
       "goodWords": 1000,
+      "minWordsForStructure": 300,
       "minParagraphs": 3,
       "maxSentenceWords": 25,
       "longSentenceShareWarn": 0.25,
@@ -51,15 +54,24 @@
       "minExternalLinks": 1,
       "transitionWordsMinShare": 0.2,
       "passiveVoiceMaxShare": 0.15,
-      "minWordsForList": 400,
-      "minWordsForFaq": 500,
-      "minWordsForConclusion": 400
+      "minWordsForList": 600,
+      "minWordsForFaq": 1200,
+      "minWordsForConclusion": 800
     },
     "readability": {
       "fleschGood": 60,
       "fleschOkay": 40
     }
   },
+  "weakHookWords": [
+    "a", "an", "and", "are", "as", "at", "be", "best", "but", "by", "can", "do",
+    "first", "for", "free", "from", "get", "guide", "hands", "have", "how", "in",
+    "is", "it", "its", "just", "know", "like", "made", "make", "master", "more",
+    "most", "new", "now", "of", "on", "one", "or", "our", "out", "results", "save",
+    "step", "steps", "that", "the", "this", "tips", "to", "top", "tricks", "up",
+    "us", "use", "very", "want", "what", "when", "which", "why", "will", "with",
+    "you", "your"
+  ],
   "powerWords": [
     "absolute", "advanced", "affordable", "alluring", "alternative", "amazing",
     "announced", "approved", "astonishing", "attractive", "authentic", "awesome",

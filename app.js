@@ -10,21 +10,94 @@ const els = {
 };
 const LS_DRAFT = "seo-review-draft-v1";
 
-/* ---------- Built-in fallback rules (used only if the local file can't load) ---------- */
+/* ---------- Built-in fallback rules (used only if the local file can't load) ----------
+   MUST stay identical to seo-rules.json: on a file:// open the fetch in
+   loadRules() fails and every check and suggestion reads THIS block instead,
+   so a silent mismatch would quietly change behaviour. tests/run.js fails on
+   any drift; regenerate with: node tests/sync-fallback.js                      */
 const FALLBACK_RULES = {
   version: "built-in fallback",
-  updated: "2026-10-04",
-  sources: ["https://developers.google.com/search/docs/fundamentals/seo-starter-guide"],
+  updated: "2026-10-07",
+  sources: ["https://developers.google.com/search/docs/fundamentals/seo-starter-guide", "https://developers.google.com/search/docs/fundamentals/creating-helpful-content", "https://developers.google.com/search/docs/appearance/title-link", "https://developers.google.com/search/docs/appearance/snippet", "https://developers.google.com/search/docs/appearance/google-images", "https://developers.google.com/search/docs/appearance/structured-data/faqpage", "https://developers.google.com/search/blog/2023/08/howto-faq-changes", "https://developers.google.com/search/blog/2021/08/update-to-generating-page-titles"],
   rules: {
-    title: { minChars: 40, maxChars: 60, hardMaxChars: 70, rewriteSafeMin: 51, rewriteSafeMax: 55, keywordAtStartMaxPos: 15 },
-    summary: { minChars: 120, maxChars: 155, hardMaxChars: 170 },
-    excerpt: { minChars: 80, maxChars: 160, hardMaxChars: 200 },
-    body: { minWords: 300, goodWords: 1000, minParagraphs: 3, maxSentenceWords: 25, longSentenceShareWarn: 0.25, maxParagraphWords: 120, keywordDensityMin: 0.005, keywordDensityMax: 0.025, keywordDensityGoodMax: 0.02, firstKeywordWithinWords: 100, sectionLevel: 2, minSections: 1, wordsPerSection: 350, siteDomain: "", minInternalLinks: 1, minExternalLinks: 1, transitionWordsMinShare: 0.2, passiveVoiceMaxShare: 0.15, minWordsForList: 400, minWordsForFaq: 500, minWordsForConclusion: 400 },
+    title: {
+      minChars: 40,
+      maxChars: 60,
+      hardMaxChars: 70,
+      rewriteSafeMin: 51,
+      rewriteSafeMax: 55,
+      keywordAtStartMaxPos: 15,
+      warnEmojiMax: 0,
+    },
+    summary: { label: "Article summary (used as meta description)", minChars: 120, maxChars: 155, hardMaxChars: 170 },
+    excerpt: { label: "Excerpt (listing / teaser snippet)", minChars: 80, maxChars: 160, hardMaxChars: 200 },
+    body: {
+      minWords: 300,
+      goodWords: 1000,
+      minWordsForStructure: 300,
+      minParagraphs: 3,
+      maxSentenceWords: 25,
+      longSentenceShareWarn: 0.25,
+      maxParagraphWords: 120,
+      keywordDensityMin: 0.005,
+      keywordDensityMax: 0.025,
+      keywordDensityGoodMax: 0.02,
+      firstKeywordWithinWords: 100,
+      sectionLevel: 3,
+      minSections: 1,
+      wordsPerSection: 350,
+      siteDomain: "neowin.net",
+      minInternalLinks: 1,
+      minExternalLinks: 1,
+      transitionWordsMinShare: 0.2,
+      passiveVoiceMaxShare: 0.15,
+      minWordsForList: 600,
+      minWordsForFaq: 1200,
+      minWordsForConclusion: 800,
+    },
     readability: { fleschGood: 60, fleschOkay: 40 },
   },
-  powerWords: ["absolute", "advanced", "affordable", "alluring", "alternative", "amazing", "announced", "approved", "astonishing", "attractive", "authentic", "awesome", "backed", "banned", "bargain", "beautiful", "beginner", "benchmark", "best", "blissful", "blueprint", "bold", "bonus", "brave", "breaking", "breakthrough", "brilliant", "budget", "celebrated", "certified", "challenge", "cheap", "checklist", "classic", "clever", "colossal", "comparison", "complete", "comprehensive", "confirmed", "conquer", "coveted", "crazy", "critical", "dazzling", "deal", "decoded", "delight", "delightful", "detailed", "definitive", "discount", "dominant", "dynamic", "easy", "effortless", "elite", "empowering", "envy", "epic", "essential", "exceptional", "exciting", "exclusive", "exotic", "expert", "explained", "exposed", "fast", "fearless", "first", "flagship", "flawless", "foolproof", "forceful", "formula", "framework", "free", "fresh", "futuristic", "gargantuan", "genius", "giant", "glamorous", "glorious", "groundbreaking", "guaranteed", "guide", "hacks", "hands", "handy", "heroic", "hidden", "honest", "how", "huge", "iconic", "incredible", "insider", "instant", "killer", "latest", "lavish", "leaked", "legendary", "limited", "lucrative", "luminous", "magnetic", "majestic", "mammoth", "marvelous", "massive", "master", "mesmerizing", "method", "miraculous", "mistakes", "monumental", "myths", "new", "noteworthy", "now", "official", "opulent", "outstanding", "outrageous", "painless", "peerless", "perfect", "personal", "phenomenal", "picturesque", "playbook", "plush", "popular", "powerful", "practical", "prized", "pro", "profitable", "prominent", "promising", "proven", "quick", "quirky", "radiant", "rapid", "rare", "rave", "refined", "relentless", "remarkable", "results", "revealed", "review", "revolutionary", "roadmap", "robust", "save", "savvy", "seamless", "secret", "secrets", "sensational", "shocking", "simple", "simplified", "sizzling", "skyrocket", "sleek", "smart", "smarter", "spectacular", "splendid", "standout", "step", "steps", "straightforward", "strategy", "sturdy", "sublime", "stunning", "superb", "surprising", "tested", "timeless", "tips", "today", "top", "tricks", "truth", "tutorial", "ultimate", "unbelievable", "unexpected", "upgrade", "urgent", "verified", "versus", "warning", "what", "when", "why", "winning", "worst"],
+  powerWords: [
+    "absolute", "advanced", "affordable", "alluring", "alternative", "amazing", "announced",
+    "approved", "astonishing", "attractive", "authentic", "awesome", "backed", "banned",
+    "bargain", "beautiful", "beginner", "benchmark", "best", "blissful", "blueprint",
+    "bold", "bonus", "brave", "breaking", "breakthrough", "brilliant", "budget",
+    "celebrated", "certified", "challenge", "cheap", "checklist", "classic", "clever",
+    "colossal", "comparison", "complete", "comprehensive", "confirmed", "conquer", "coveted",
+    "crazy", "critical", "dazzling", "deal", "decoded", "delight", "delightful",
+    "detailed", "definitive", "discount", "dominant", "dynamic", "easy", "effortless",
+    "elite", "empowering", "envy", "epic", "essential", "exceptional", "exciting",
+    "exclusive", "exotic", "expert", "explained", "exposed", "fast", "fearless",
+    "first", "flagship", "flawless", "foolproof", "forceful", "formula", "framework",
+    "free", "fresh", "futuristic", "gargantuan", "genius", "giant", "glamorous",
+    "glorious", "groundbreaking", "guaranteed", "guide", "hacks", "hands", "handy",
+    "heroic", "hidden", "honest", "how", "huge", "iconic", "incredible",
+    "insider", "instant", "killer", "latest", "lavish", "leaked", "legendary",
+    "limited", "lucrative", "luminous", "magnetic", "majestic", "mammoth", "marvelous",
+    "massive", "master", "mesmerizing", "method", "miraculous", "mistakes", "monumental",
+    "myths", "new", "noteworthy", "now", "official", "opulent", "outstanding",
+    "outrageous", "painless", "peerless", "perfect", "personal", "phenomenal", "picturesque",
+    "playbook", "plush", "popular", "powerful", "practical", "prized", "pro",
+    "profitable", "prominent", "promising", "proven", "quick", "quirky", "radiant",
+    "rapid", "rare", "rave", "refined", "relentless", "remarkable", "results",
+    "revealed", "review", "revolutionary", "roadmap", "robust", "save", "savvy",
+    "seamless", "secret", "secrets", "sensational", "shocking", "simple", "simplified",
+    "sizzling", "skyrocket", "sleek", "smart", "smarter", "spectacular", "splendid",
+    "standout", "step", "steps", "straightforward", "strategy", "sturdy", "sublime",
+    "stunning", "superb", "surprising", "tested", "timeless", "tips", "today",
+    "top", "tricks", "truth", "tutorial", "ultimate", "unbelievable", "unexpected",
+    "upgrade", "urgent", "verified", "versus", "warning", "what", "when",
+    "why", "winning", "worst",
+  ],
+  weakHookWords: [
+    "a", "an", "and", "are", "as", "at", "be", "best", "but", "by", "can",
+    "do", "first", "for", "free", "from", "get", "guide", "hands", "have", "how", "in",
+    "is", "it", "its", "just", "know", "like", "made", "make", "master", "more", "most",
+    "new", "now", "of", "on", "one", "or", "our", "out", "results", "save", "step",
+    "steps", "that", "the", "this", "tips", "to", "top", "tricks", "up", "us", "use",
+    "very", "want", "what", "when", "which", "why", "will", "with", "you", "your",
+  ],
 };
-
 let RULES = FALLBACK_RULES;
 
 /* ---------- Rules loading (local static file + built-in fallback; silent) ---------- */
@@ -257,61 +330,78 @@ function analyze() {
   /* Title */
   const tl = title.trim().length;
   updateMeter("title", tl, R.title.minChars, R.title.maxChars, R.title.hardMaxChars, title.trim() ? null : "Add a title to get feedback.");
-  if (!title.trim()) add("title", "skip", "Title: empty (optional)", "Titles around 40–60 characters earn the full snippet in Google. Add one when ready.", 0);
+  if (!title.trim()) add("title", "skip", "Title: empty (optional)", `Search truncates the title link to the device width — roughly ${R.title.minChars}–${R.title.maxChars} characters on desktop. Add one when ready.`, 0);
   else {
-    if (tl < R.title.minChars) add("title-len", "warn", `Title too short (${tl} chars)`, `Aim for ${R.title.minChars}–${R.title.maxChars} characters so it carries a promise + keyword. Currently too thin to compete.`, 2);
+    // Google's title-link guidance has no character limit at all; what gets cut
+    // is pixel width, so the bands below are an editorial estimate, not a rule.
+    if (tl < R.title.minChars) add("title-len", "warn", `Title thin (${tl} chars)`, `Aim for ${R.title.minChars}–${R.title.maxChars} characters so the promise lands before search cuts it off. A short title is fine — it just has less to say.`, 2);
     else if (tl <= R.title.maxChars) {
       const sweet = R.title.rewriteSafeMin && R.title.rewriteSafeMax && tl >= R.title.rewriteSafeMin && tl <= R.title.rewriteSafeMax;
       add("title-len", "pass", `Title length looks good (${tl} chars)`,
-        sweet ? "Fits the snippet and sits in the 51–55 zone with the lowest Google rewrite rate."
-              : "Fits the search snippet without truncation. (51–55 chars has the lowest rewrite rate.)", 2);
+        sweet ? "Sits in the 51–55 zone, where Google is least likely to rewrite the title link."
+              : `Comfortably inside the ~${R.title.maxChars}-character desktop estimate. (51–55 chars has the lowest rewrite rate.)`, 2);
     }
-    else if (tl <= R.title.hardMaxChars) add("title-len", "warn", `Title may truncate (${tl} chars)`, `Google typically shows ~60 characters. Trim to under ${R.title.maxChars} so the key promise survives.`, 2);
-    else add("title-len", "fail", `Title will truncate (${tl} chars)`, `Over ${R.title.hardMaxChars} characters — rewrite shorter. Put the keyphrase and hook first.`, 2);
+    else if (tl <= R.title.hardMaxChars) add("title-len", "warn", `Title may truncate (${tl} chars)`, `Search cuts the title link by pixel width — about ${R.title.maxChars} characters of plain text on desktop, less with wide capitals. Front-load the keyphrase so the promise survives.`, 2);
+    else add("title-len", "fail", `Title will truncate (${tl} chars)`, `Well past what fits — only the opening ~${R.title.maxChars} characters will render. This costs you clicks, not rankings: the full <title> is still used for indexing. Move the keyphrase and hook to the front.`, 2);
 
-if (kw) {
+    if (kw) {
       const pos = hasKeyword(title, kw) ? title.toLowerCase().search(kwPattern(kw)) : -1;
-      if (pos === -1) add("title-kw", "fail", "Title: missing keyphrase", `Add “${kw}” naturally, ideally within the first ${R.title.keywordAtStartMaxPos} characters.`, 2);
-      else if (pos <= R.title.keywordAtStartMaxPos) add("title-kw", "pass", "Title: keyphrase up front", "Good — crawlers and skimmers see the topic immediately.", 2);
-      else add("title-kw", "warn", "Title: keyphrase buried", `Found at character ${pos + 1}. Move “${kw}” closer to the front.`, 2);
+      // Warn, not fail: Google has no keyphrase-in-title requirement, rewrites
+      // titles often, and this is the writer's own chosen focus term.
+      if (pos === -1) add("title-kw", "warn", "Title: missing keyphrase", `Work “${kw}” in naturally, ideally within the first ${R.title.keywordAtStartMaxPos} characters. Not a ranking requirement — search matches on meaning — but it tells readers instantly what this is about.`, 1.5);
+      else if (pos <= R.title.keywordAtStartMaxPos) add("title-kw", "pass", "Title: keyphrase up front", "Readers and crawlers see the topic immediately.", 1.5);
+      else add("title-kw", "warn", "Title: keyphrase buried", `Found at character ${pos + 1} — if the title truncates, it never shows. Move “${kw}” closer to the front.`, 1.5);
     } else add("title-kw", "skip", "Title: no keyphrase set", "Add a focus keyphrase above to unlock keyword placement checks.", 0);
 
-    const hasPower = (RULES.powerWords || []).some(p => new RegExp(`\\b${escRe(p)}\\b`, "i").test(title));
+    // A hook is a number or a STRONG power word. The list also contains "how",
+    // "what", "new" and "top", which are not hooks — counting them produced
+    // false passes, so weakHookWords is subtracted out.
+    const weak = new Set((RULES.weakHookWords || []).map((w) => w.toLowerCase()));
+    const hitPower = (RULES.powerWords || []).find((p) => new RegExp(`\\b${escRe(p)}\\b`, "i").test(title) && !weak.has(p.toLowerCase()));
     const hasNum = /\d/.test(title);
-    if (hasPower || hasNum) add("title-hook", "pass", "Title has a hook", `${[hasNum && "number", hasPower && "power word"].filter(Boolean).join(" + ")} detected — good for click-through.`, 1);
-    else add("title-hook", "warn", "Title could hook harder", "Consider a number, a power word (e.g. “proven”, “complete”, “how”) or a clear benefit to stand out in the SERP.", 1);
+    if (hitPower || hasNum) add("title-hook", "pass", "Title has a hook", `${[hasNum && "number", hitPower && `“${hitPower}”`].filter(Boolean).join(" + ")} — a title with something concrete in it gets clicked more. A click-through signal, not a ranking one.`, 0.5);
+    else add("title-hook", "warn", "Title could hook harder", "No number and no strong power word (“proven”, “complete”, “actually”, “still”). Words like “how”, “what” and “top” don't count — a title needs a reason to be picked over the nine results above it.", 0.5);
     if (/[A-Z]{4,}/.test(title)) add("title-caps", "warn", "Title: avoid ALL-CAPS stretches", `“${title.match(/[A-Z]{4,}/)[0]}” reads as shouting — use normal case.`, 0.5);
 
-    // Emoji mostly fail to render in search results and can read as clickbait.
+    // Google renders emoji in title links and has no ranking penalty for them;
+    // it filters them contextually (looking spammy, misleading, out of place)
+    // and often rewrites the title anyway. So this is a house-style call.
     const emoji = (title.match(EMOJI_RE) || []);
     const emojiMax = R.title.warnEmojiMax == null ? 0 : R.title.warnEmojiMax;
-    if (emoji.length > emojiMax) add("title-emoji", "warn", `Title: ${emoji.length} emoji`, `“${emoji.slice(0, 3).join("")}${emoji.length > 3 ? "…" : ""}” is likely to be dropped from the SERP and dates fast — let the words carry the promise.`, 0.5);
+    if (emoji.length > emojiMax) add("title-emoji", "warn", `Title: ${emoji.length} emoji`, `“${emoji.slice(0, 3).join("")}${emoji.length > 3 ? "…" : ""}” — no ranking penalty, and search usually renders them, but it filters them out when they read as spammy and some platforms show one narrow glyph. Let the words carry the promise.`, 0.5);
 
     // The same keyphrase 3+ times in a 40–60 char title reads as stuffing.
     if (kw && hasKeyword(title, kw)) {
       const rep = keywordCount(title, kw);
-      if (rep > 2) add("title-stuff", "warn", `Keyphrase repeated ${rep}× in the title`, "Once is enough — repetition in the title reads as stuffing to readers and search engines alike.", 1);
+      if (rep > 2) add("title-stuff", "warn", `Keyphrase repeated ${rep}× in the title`, "Once is enough — Google's own guidance is explicit that repeating the same words in a title helps nobody.", 1);
     }
   }
 
   /* Summary (meta description role) */
   const sl = summary.trim().length;
   updateMeter("summary", sl, R.summary.minChars, R.summary.maxChars, R.summary.hardMaxChars, summary.trim() ? null : "Empty — will show here once you draft it.");
-  if (!summary.trim()) add("summary", "skip", "Summary: empty (optional)", `Summaries of ${R.summary.minChars}–${R.summary.maxChars} characters double as the Google meta description. Draft one when ready.`, 0);
+  if (!summary.trim()) add("summary", "skip", "Summary: empty (optional)", `Summaries of ${R.summary.minChars}–${R.summary.maxChars} characters double as the Google meta description. Optional — search can pull a snippet from the page itself. Draft one when ready.`, 0);
   else {
-    if (sl < R.summary.minChars) add("summary-len", "warn", `Summary short (${sl} chars)`, `Expand toward ${R.summary.minChars}–${R.summary.maxChars} characters with a benefit + reason to click. Thin snippets get rewritten by Google.`, 2);
-    else if (sl <= R.summary.maxChars) add("summary-len", "pass", `Summary length good (${sl} chars)`, "Sits inside the snippet window.", 2);
-    else if (sl <= R.summary.hardMaxChars) add("summary-len", "warn", `Summary may truncate (${sl} chars)`, `Search cuts everything after “…${summary.trim().slice(Math.max(0, R.summary.maxChars - 30), R.summary.maxChars)}” — move the CTA before that point.`, 2);
-    else add("summary-len", "fail", `Summary too long (${sl} chars)`, `Dropped in search: “…${summary.trim().slice(R.summary.maxChars, R.summary.maxChars + 45)}…”. Keep the keyphrase + one promise + one CTA.`, 2);
+    if (sl < R.summary.minChars) add("summary-len", "warn", `Summary thin (${sl} chars)`, `Expand toward ${R.summary.minChars}–${R.summary.maxChars} characters with a benefit + reason to click. There is no minimum — a short accurate summary beats a padded one — but thin snippets are more likely to be rewritten.`, 2);
+    else if (sl <= R.summary.maxChars) add("summary-len", "pass", `Summary length good (${sl} chars)`, "Lands inside the usual desktop snippet window.", 2);
+    else if (sl <= R.summary.hardMaxChars) add("summary-len", "warn", `Summary may truncate (${sl} chars)`, `Search cuts after roughly “${summary.trim().slice(Math.max(0, R.summary.maxChars - 30), R.summary.maxChars)}” — put the reason to click before that point.`, 2);
+    else add("summary-len", "fail", `Summary too long (${sl} chars)`, `Almost none of it will show: “${summary.trim().slice(R.summary.maxChars, R.summary.maxChars + 45)}…”. Nothing is “dropped” — it is truncated, by pixel width. Keep the keyphrase + one promise + one reason to click in the first ${R.summary.maxChars} characters.`, 2);
     if (kw) {
       add(...kwCheck(summary, kw, "summary-kw", "Summary", 1.5));
     }
-    // A snippet that never gives a reason to click converts poorly.
+    // "Reason to click" is broader than a literal call to action: a concrete
+    // figure, an open question or an explicit benefit all do the same job, and
+    // requiring a CTA verb warned on summaries that were already fine.
     const cta = CTA_RE.test(summary);
-    if (cta) add("summary-cta", "pass", "Summary has a call to action", "Tells the reader what happens next — good for click-through.", 1);
-    else add("summary-cta", "warn", "Summary lacks a reason to click", "Nothing in there earns the click — a specific, concrete promise does (a number, a stake, a surprising result). Generic framing like “here’s what to know” spends the character budget without saying anything.", 1);
+    const hookBits = [cta && "a call to action", /\d/.test(summary) && "a figure",
+      /\?/.test(summary) && "an open question", BENEFIT_RE.test(summary) && "a stated benefit"]
+      .filter(Boolean);
+    if (hookBits.length) add("summary-cta", "pass", "Summary gives a reason to click",
+      `Found ${hookBits.slice(0, 2).join(" and ")}. Search often rewrites descriptions anyway, but a snippet with a reason to click earns more of them.`, 0.5);
+    else add("summary-cta", "warn", "Summary gives no reason to click",
+      "Generic framing like “here’s what to know” spends the character budget without promising anything. A specific concrete hook — a number, a stake, a surprising result, an open question — is what earns the click.", 0.5);
     const sem = (summary.match(EMOJI_RE) || []).length;
-    if (sem) add("summary-emoji", "warn", `Summary: ${sem} emoji`, "Emoji can truncate mid-sequence in search results and rarely helps a tech audience.", 0.5);
+    if (sem) add("summary-emoji", "warn", `Summary: ${sem} emoji`, "No ranking penalty, and search normally renders them — but it strips them when they read as spammy, and one narrow glyph can eat several characters of snippet width.", 0.5);
   }
 
   /* Excerpt */
@@ -322,13 +412,15 @@ if (kw) {
     if (exl < R.excerpt.minChars) add("excerpt-len", "warn", `Excerpt short (${exl} chars)`, `Flesh it toward ${R.excerpt.minChars}–${R.excerpt.maxChars} characters with a concrete hook.`, 1);
     else if (exl <= R.excerpt.maxChars) add("excerpt-len", "pass", `Excerpt length good (${exl} chars)`, "Snappy enough for cards and feeds.", 1);
     else add("excerpt-len", "warn", `Excerpt long (${exl} chars)`, `Cards cut everything after “…${excerpt.trim().slice(Math.max(0, R.excerpt.maxChars - 30), R.excerpt.maxChars)}” — front-load the hook.`, 1);
-    if (kw) add(...kwCheck(excerpt, kw, "excerpt-kw", "Excerpt", 1));
+    // The excerpt is a teaser for cards and newsletters, not a search snippet,
+    // so the keyphrase is a weak relevance hint here rather than an SEO signal.
+    if (kw) add(...kwCheck(excerpt, kw, "excerpt-kw", "Excerpt", 0.5));
     if (summary.trim() && stripMdHtml(summary).toLowerCase() === stripMdHtml(excerpt).toLowerCase())
       add("excerpt-dup", "warn", "Excerpt duplicates summary", "Differentiate them: summary = what the article delivers (SEO), excerpt = why to click now (tease).", 1);
     // Partial overlap still reads as duplicate on a listing page.
     if (summary.trim() && excerptSharesWith(summary, excerpt))
       add("excerpt-dup2", "warn", "Excerpt largely repeats the summary", "Say something the summary doesn't — tease a detail, a number or a stake instead of restating it.", 1);
-    if (CTA_RE.test(excerpt)) add("excerpt-cta", "pass", "Excerpt has a hook", "Teases a reason to click — works on cards, feeds and newsletters.", 0.5);
+    if (CTA_RE.test(excerpt) || BENEFIT_RE.test(excerpt)) add("excerpt-cta", "pass", "Excerpt has a hook", "Teases a reason to click — works on cards, feeds and newsletters.", 0.5);
   }
 
   /* Body */
@@ -337,12 +429,20 @@ if (kw) {
   updateMeter("body", bw, R.body.minWords, R.body.goodWords, R.body.goodWords * 1.5, empty ? "Paste your draft to get body feedback." : null);
   if (empty) add("body", "skip", "Article: empty (optional)", "Paste a draft — word count, headings, links, keyword use and readability appear here live.", 0);
   else {
-    if (bw < R.body.minWords) add("body-len", "fail", `Article thin (${bw} words)`, `Under ${R.body.minWords} words rarely covers a topic competitively. Expand with examples, steps, or FAQs.`, 3);
-    else if (bw < R.body.goodWords) add("body-len", "warn", `Article decent (${bw} words)`, `Over ${R.body.goodWords} words with real depth tends to compete better. Add sections, data, or examples — not filler.`, 3);
-    else add("body-len", "pass", `Article depth good (${bw} words)`, "Length supports topical coverage. Keep it scannable (headings, short paragraphs).", 3);
+    // Google states plainly that there is no minimum, maximum or ideal word
+    // count — length alone is not a ranking factor. So this is a coverage
+    // prompt, never a failure: a 250-word news brief can be perfectly complete.
+    const structureAt = R.body.minWordsForStructure || 300;
+    const structureApplies = bw >= structureAt;
+    if (bw < R.body.minWords) add("body-len", "warn", `Article short (${bw} words)`, `There is no minimum word count — a short piece that answers the question completely beats a padded one. This one is under ${R.body.minWords} words, so ask whether anything a reader would ask next is missing. Add examples or specifics, never filler.`, 2);
+    else if (bw < R.body.goodWords) add("body-len", "warn", `Article has room to go deeper (${bw} words)`, `Not a length target — a prompt. If there is a sub-question, a number or a counter-argument you left out, add it. If this already answers the topic, it is done.`, 2);
+    else add("body-len", "pass", `Article depth good (${bw} words)`, "Enough room to cover the topic. Keep it scannable (headings, short paragraphs) — depth you can navigate beats depth you have to wade through.", 2);
 
+    // One paragraph is right for a 60-word brief; three is right for a full
+    // article. A fixed minimum of 3 warned on short pieces for no reason.
+    const parasNeeded = bw >= 300 ? R.body.minParagraphs : bw >= 100 ? 2 : 1;
     const paras = body.split(/\n\s*\n/).filter(p => stripMdHtml(p).split(/\s+/).length > 2);
-    if (paras.length < R.body.minParagraphs) add("body-para", "warn", "Few paragraphs", `Only ${paras.length} paragraph${paras.length === 1 ? "" : "s"} for ${bw} words — break the draft into short paragraphs; walls of text hurt dwell time.`, 1);
+    if (paras.length < parasNeeded) add("body-para", "warn", "Few paragraphs", `Only ${paras.length} paragraph${paras.length === 1 ? "" : "s"} for ${bw} words — break the draft into short paragraphs; walls of text hurt dwell time.`, 1);
     const longParas = paras.filter(p => words(p).length > R.body.maxParagraphWords).length;
     if (longParas > 0) {
       const fattest = paras.slice().sort((a, b) => words(b).length - words(a).length)[0];
@@ -359,62 +459,111 @@ if (kw) {
     // Section level comes from live rules (Neowin CMS = H3; standard sites = H2).
     const lvl = R.body.sectionLevel || 2, tag = "H" + lvl, hashes = "#".repeat(lvl);
     const secs = heads.filter(h => h.level === lvl);
-    if (secs.length < R.body.minSections) add("body-h", "warn", "No clear sections", `Add ${hashes} subheadings with keyword variants — they structure snippets and featured answers. (House style: ${tag}.)`, 2);
-    else {
-      const need = Math.max(R.body.minSections, Math.floor(bw / R.body.wordsPerSection));
-      if (secs.length >= need) add("body-h", "pass", `${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`, "Good structure for skimmers and crawlers.", 2);
-      else add("body-h", "warn", `Only ${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`, `For ~${bw} words aim for ~${need}. Each ${tag} should promise one answer.`, 2);
+    // Headings exist to break up something long enough to need breaking up.
+    // Below structureAt the draft has nothing to divide, so demanding a
+    // subheading is pure clutter — skip the check entirely instead of warning.
+    let needSections = 0;
+    if (!structureApplies) {
+      add("body-h", "skip", `Sections not needed at ${bw} words`,
+        `Subheadings divide up content that is long enough to need dividing. At ${bw} words this reads fine as ${paras.length <= 1 ? "a single block" : `${paras.length} blocks`} — no ${tag}s required. Past ~${structureAt} words this check switches on.`, 0);
+    } else {
+      needSections = Math.max(R.body.minSections, Math.floor(bw / R.body.wordsPerSection));
+      if (secs.length >= needSections) add("body-h", "pass", `${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`,
+        `${bw} words in ${secs.length} section${secs.length > 1 ? "s" : ""} — one section per ~${R.body.wordsPerSection} words keeps it navigable, and search uses headings to tell what each part is about.`, 2);
+      else if (secs.length === 0) add("body-h", "warn", `No ${tag} sections`,
+        `At ${bw} words, ~${needSections} section heading${needSections > 1 ? "s" : ""} would help. Each ${tag} should promise one answer, and headings tell search what each part is about. Do not add them for their own sake — if the draft already flows as ${paras.length <= 2 ? `${paras.length} tight blocks` : "clear blocks"}, leave it. (House style: ${tag}.)`, 2);
+      else add("body-h", "warn", `Only ${secs.length} ${tag} section${secs.length > 1 ? "s" : ""}`,
+        `For ~${bw} words, ~${needSections} would divide it more evenly. Each ${tag} should promise one answer.`, 2);
     }
     const h1 = heads.find(h => h.level === 1);
     if (heads.some(h => h.level === 1) || /^#\s/m.test(body)) add("body-h1", "warn", "Avoid H1 inside the body", `Found “${(h1 && h1.text) || (body.match(/^#\s+(.+)$/m) || [])[1] || "H1"}” — your title is already the H1, so start body sections at ${hashes}.`, 0.5);
 
+    // Link advice is only worth making once there is enough text for a link to
+    // sit inside naturally. A 60-word brief has nowhere to put one.
     const { internal, external } = parseLinks(body, R.body.siteDomain);
-    if (internal.length < R.body.minInternalLinks) add("body-il", "warn", "No internal links detected", "Link to 1–2 related posts/pages — it distributes authority and keeps readers around.", 1.5);
-    else add("body-il", "pass", `${internal.length} internal link${internal.length > 1 ? "s" : ""}`, "Good for crawl depth and sessions.", 1.5);
-    if (external.length < R.body.minExternalLinks) add("body-el", "warn", "No external citations", "Cite 1+ authoritative source — it grounds claims and matches what rankers do.", 1);
-    else add("body-el", "pass", `${external.length} external citation${external.length > 1 ? "s" : ""}`, "Good — keep links relevant and fresh.", 1);
+    if (!structureApplies) {
+      add("body-il", "skip", "Internal links: nothing to link from yet",
+        `At ${bw} words there is no natural home for a related-post link. Past ~${structureAt} words this check switches on.`, 0);
+      add("body-el", "skip", "Citations: nothing to cite yet",
+        `At ${bw} words there is nothing here making a claim that needs backing. Past ~${structureAt} words this check switches on.`, 0);
+    } else {
+      if (internal.length < R.body.minInternalLinks) add("body-il", "warn", "No internal links detected", "Link to 1–2 related posts — it distributes authority and keeps readers on the site. One descriptive anchor is enough; it does not need to be every paragraph.", 1);
+      else add("body-il", "pass", `${internal.length} internal link${internal.length > 1 ? "s" : ""}`, "Good for crawl depth and sessions.", 1);
+      // Citations are for claims, not for coverage — a piece that asserts
+      // nothing checkable does not owe anyone a source.
+      if (external.length < R.body.minExternalLinks) add("body-el", "warn", "No external citations", "Cite a source wherever you make a checkable claim — a statistic, a study, a price, a superlative. Uncited claims are the thing readers and editors push back on.", 0.5);
+      else add("body-el", "pass", `${external.length} external citation${external.length > 1 ? "s" : ""}`, "Claims are backed — keep sources relevant and check they are still live.", 0.5);
+    }
 
-    // Scannable structure: bullets/tables and a Q&A block are what let a reader
-    // (and a featured snippet) take the piece in without reading every line.
+    // Scannable structure: bullets and a Q&A block are format choices, not
+    // correctness, so they stay low-weight and only appear in pieces long
+    // enough for a format to be worth choosing.
     const listLines = countListLines(body);
-    if (bw >= (R.body.minWordsForList || 400)) {
-      if (listLines >= 3) add("body-list", "pass", `${listLines} list/table lines`, "Bulleted or tabular content — easy to skim and easy for search to quote.", 1);
-      else add("body-list", "warn", "No lists or tables in a long piece", `At ${bw} words, all prose is a wall to skim. Turn at least one section into bullets — steps, options or specs.`, 1);
+    if (bw >= (R.body.minWordsForList || 600)) {
+      if (listLines >= 3) add("body-list", "pass", `${listLines} list/table lines`, "Bulleted or tabular content — easy to skim, and easy for search to quote.", 0.5);
+      else add("body-list", "warn", "No lists or tables in a long piece", `At ${bw} words, all prose is a wall to skim. If any section is naturally a set — steps, options, specs — turn it into bullets. If nothing in this draft is a set, skip it.`, 0.5);
     }
-    if (bw >= (R.body.minWordsForFaq || 500)) {
+    // A Q&A block is only worth writing when the piece is long enough to have
+    // real questions in it. It is NOT a rich-result play any more: Google
+    // restricted FAQ rich results to government/health sites in August 2023 and
+    // then deprecated them outright, so a Q&A earns its place on skimmability
+    // and quotability alone — which is a good reason and not a ranking one.
+    if (bw >= (R.body.minWordsForFaq || 1200)) {
       const faq = heads.some((h) => isFaqHeading(h.text)) || (body.match(FAQ_HEAD_RE) ? true : false);
-      if (faq) add("body-faq", "pass", "FAQ / questions section", "Q&A blocks are the format most likely to be pulled into a featured snippet.", 1);
-      else add("body-faq", "warn", "No FAQ or questions section", `Past ~${R.body.minWordsForFaq || 500} words, add 3–5 real questions your readers ask and answer each in 2–3 sentences.`, 1);
+      if (faq) add("body-faq", "pass", "FAQ / questions section", "Answers a question in 2–3 sentences each, which is the shape search quotes from and readers scan for.", 0.5);
+      else add("body-faq", "warn", "No FAQ or questions section", `At ${bw} words there are probably 3–5 questions readers are already asking. Answer each in 2–3 sentences, in your own words. Worth it for scannability — not for rich results, which Google no longer gives to general sites.`, 0.5);
     }
-    if (bw >= (R.body.minWordsForConclusion || 400)) {
+    if (bw >= (R.body.minWordsForConclusion || 800)) {
       if (hasConclusion(body)) add("body-concl", "pass", "Wraps up in a conclusion", "Closing section gives the takeaway and a natural place to restate the keyphrase.", 0.5);
-      else add("body-concl", "warn", "No conclusion or takeaway", "End with a short closing section — what it means, who should care, what to do next.", 0.5);
+      else add("body-concl", "warn", "No conclusion or takeaway", "End on the takeaway — what it means, who should care, what to do next. A news piece can skip this if the last line already lands the point.", 0.5);
     }
     // Anchor text: bare URLs and "click here" waste the signal the link carries.
     const anchorIssues = unhelpfulAnchors(body);
     if (anchorIssues.n) add("body-anchor", "warn", `${anchorIssues.n} unhelpful link${anchorIssues.n > 1 ? "s" : ""}`, `${anchorIssues.why} — a bare URL or “click here” hides the destination from readers and crawlers alike.`, 1);
     else if (internal.length) add("body-anchor", "pass", "Descriptive link anchors", "Anchor text describes its destination — the strongest internal-linking signal there is.", 0.5);
 
+    // Images are the one on-page element this app previously ignored entirely.
+    // Google's own image guidance: "the most important attribute when it comes
+    // to providing more metadata for an image is the alt text". Gated on images
+    // actually being present, so an image-free draft sees nothing.
+    const alts = imageAltIssues(body);
+    if (alts.total) {
+      if (alts.missing) add("body-alt", "warn", `${alts.missing} image${alts.missing > 1 ? "s" : ""} with no alt text`,
+        `Google reads alt text to understand what an image shows, and screen readers need it to read the page at all. Describe the image: ${alts.example || "what it shows, in a phrase"}.`, 1);
+      else if (alts.thin) add("body-alt", "warn", `${alts.thin} thin alt text${alts.thin > 1 ? "s" : ""}`,
+        `Alt text of one or two words tells neither Google nor a screen reader anything useful. Say what the image actually shows.`, 0.5);
+      else add("body-alt", "pass", "Images have descriptive alt text", `All ${alts.total} image${alts.total > 1 ? "s" : ""} described — that is the attribute search and screen readers both rely on.`, 0.5);
+    }
+
     if (kw) {
       const dens = bw ? keywordCount(body, kw) / bw : 0;
       const occ = keywordCount(body, kw);
-      if (occ === 0) add("body-kw", "fail", "Keyphrase missing from body", `Use “${kw}” (and natural variants) in the intro, a heading, and the conclusion.`, 2.5);
-      else if (dens < R.body.keywordDensityMin) add("body-kw", "warn", `Keyphrase rare (${(dens * 100).toFixed(1)}% density, ${occ}×)`, "Weave it in a few more times naturally — intro, one H2, body, conclusion.", 2.5);
-      else if (dens <= R.body.keywordDensityGoodMax) add("body-kw", "pass", `No exact-match stuffing (${(dens * 100).toFixed(1)}%, ${occ}×)`, "Repetition looks natural. Note: Google doesn't use density as a ranking factor — this is just an over-repetition check.", 2.5);
-      else if (dens <= R.body.keywordDensityMax) add("body-kw", "warn", `Keyphrase slightly heavy (${(dens * 100).toFixed(1)}%)`, "Vary with synonyms/pronouns — Google flags unnatural repetition, not a number.", 2.5);
-      else add("body-kw", "fail", `Possible keyword stuffing (${(dens * 100).toFixed(1)}%, ${occ}×)`, "Rewrite with pronouns/synonyms. If it sounds forced read aloud, cut it.", 2.5);
+      // Only the two ends matter. Density below the floor is NOT flagged:
+      // warning "your keyphrase is too rare" pushes writers toward exactly the
+      // repetition the upper bound exists to catch, and density is not a
+      // ranking factor (Google has said so since 2011).
+      if (occ === 0) add("body-kw", "fail", "Keyphrase missing from body", `You set “${kw}” as the focus term and it never appears. Search matches on meaning, not exact strings, so this is not a ranking rule — but if the phrase is not in the draft, the piece may not be about what you think it is.`, 2);
+      else if (dens > R.body.keywordDensityMax) add("body-kw", "warn", `Keyphrase repeated heavily (${(dens * 100).toFixed(1)}%, ${occ}×)`,
+        `That is the point where repetition starts reading as repetition. Reach for a synonym, a pronoun or a shorter phrase. Read it aloud — if you flinch, so will they. Google judges how it reads, not the percentage.`, 2);
+      else if (dens > R.body.keywordDensityGoodMax) add("body-kw", "warn", `Keyphrase slightly heavy (${(dens * 100).toFixed(1)}%, ${occ}×)`,
+        "Close to the edge where exact-match repetition starts to show. A synonym or pronoun in one or two spots is usually enough.", 2);
+      else add("body-kw", "pass", `Keyphrase reads naturally (${(dens * 100).toFixed(1)}%, ${occ}×)`,
+        "Used where it fits and nowhere it does not. Worth saying plainly: keyword density is not a Google ranking factor — this only catches writing that sounds forced.", 2);
 
       const flat = stripMdHtml(body).toLowerCase();
       const re = kwPattern(kw);
       const firstPos = re ? flat.search(re) : -1;
       const wordsBefore = firstPos === -1 ? Infinity : flat.slice(0, firstPos).split(/\s+/).filter(Boolean).length;
-      if (firstPos !== -1 && wordsBefore <= R.body.firstKeywordWithinWords) add("body-intro", "pass", "Keyphrase in intro", `First use within the first ${R.body.firstKeywordWithinWords} words — good topical signal.`, 1.5);
-      else if (firstPos !== -1) add("body-intro", "warn", "Keyphrase starts late", `First use is ~${wordsBefore} words in. State the topic within the first ${R.body.firstKeywordWithinWords} words.`, 1.5);
+      if (firstPos !== -1 && wordsBefore <= R.body.firstKeywordWithinWords) add("body-intro", "pass", "Keyphrase in intro", `First use within the first ${R.body.firstKeywordWithinWords} words — the opening states the topic, which is what a reader and a crawler both want first.`, 1.5);
+      else if (firstPos !== -1) add("body-intro", "warn", "Keyphrase starts late", `First use is ~${wordsBefore} words in. State the topic within the first ${R.body.firstKeywordWithinWords} words — mostly so the reader knows what they have landed on.`, 1.5);
 
       const inHead = heads.some(h => hasKeyword(h.text, kw));
-      add("body-hkw", inHead ? "pass" : "warn", inHead ? "Keyphrase in a heading" : "No heading contains keyphrase",
-        inHead ? "Nice — reinforces structure." : `Work “${kw}” (or a variant) into one ${hashes} heading.`, 1);
-    } else add("body-kw", "skip", "Body: no keyphrase set", "Set a focus keyphrase to check density, intro and heading usage.", 0);
+      // Never demand a heading from a draft that does not need headings.
+      if (!structureApplies) add("body-hkw", "skip", "Keyphrase in a heading: no headings needed here",
+        `This draft is ${bw} words, so it has no section headings to carry a keyphrase. The keyphrase already appears ${occ}× in the body, which is what matters.`, 0);
+      else add("body-hkw", inHead ? "pass" : "warn", inHead ? "Keyphrase in a heading" : "No heading contains keyphrase",
+        inHead ? "A heading is a strong signal about what that part of the page is about." : `Work “${kw}” (or a variant) into one ${hashes} heading — but only if it fits. A forced keyphrase in a heading is worse than a plain one.`, 1);
+    } else add("body-kw", "skip", "Body: no keyphrase set", "Set a focus keyphrase to check placement and repetition.", 0);
 
     const f = flesch(body);
     if (f === null) add("body-read", "skip", "Readability: need more text", "Flesch score appears after ~30 words.", 0);
@@ -422,9 +571,11 @@ if (kw) {
       const avgLen = Math.round(ss.reduce((a, s) => a + s.split(/\s+/).length, 0) / ss.length);
       const longest = ss.slice().sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length)[0];
       const ev = `Average ${avgLen} words/sentence; longest starts “…${smartTrim(longest, 80)}”.`;
-      if (f >= R.readability.fleschGood) add("body-read", "pass", `Readable (Flesch ${Math.round(f)})`, `Plain language for broad audiences. ${ev}`, 1);
-      else if (f >= R.readability.fleschOkay) add("body-read", "warn", `Fairly dense (Flesch ${Math.round(f)})`, `Shorten sentences, swap jargon for plain words. ${ev}`, 1);
-      else add("body-read", "fail", `Hard to read (Flesch ${Math.round(f)})`, `Break up sentences, use lists and headings. ${ev}`, 1);
+      // Never a failure: Flesch is not a ranking factor, and technical
+      // register legitimately scores 30–50. Dense is a note, not a verdict.
+      if (f >= R.readability.fleschGood) add("body-read", "pass", `Readable (Flesch ${Math.round(f)})`, `Plain language. ${ev}`, 1);
+      else if (f >= R.readability.fleschOkay) add("body-read", "warn", `Dense (Flesch ${Math.round(f)})`, `Between the two: readable, just wordy. ${ev} Not a ranking factor — this is about whether a tired reader at 11pm keeps going.`, 1);
+      else add("body-read", "warn", `Very dense (Flesch ${Math.round(f)})`, `Worth a pass for shorter sentences and plainer verbs. ${ev} Technical topics sit low here by nature, and Flesch is not a ranking factor — only change it if the density is hurting the reader.`, 1);
     }
 
     const ts = transitionShare(body);
@@ -435,14 +586,14 @@ if (kw) {
         `Transition words in ${Math.round(ts * 100)}% of sentences`,
         ts >= R.body.transitionWordsMinShare
           ? `Good flow — you already use: ${used.slice(0, 5).join(", ") || "a few"}.`
-          : `${used.length ? `Found only: ${used.slice(0, 4).join(", ")}. Widen with: ${missing.slice(0, 3).join(", ") || "meanwhile"}.` : "None detected — try however, for example, finally to carry readers through."}`, 0.5);
+          : `This is a writing check, not an SEO one — connectors have never been a ranking signal. Widen with ${missing.slice(0, 3).join(", ") || "meanwhile"} only where the logic actually changes; sprinkled-on connectors read worse than none.`, 0.25);
     }
     const pv = passiveShare(body);
     if (ss.length > 4) {
       const hits = ss.filter(isPassive).slice(0, 2).map((s) => `“${smartTrim(s, 90)}”`).join(" ");
       add("body-passive", pv <= R.body.passiveVoiceMaxShare ? "pass" : "warn",
         `Passive voice ~${Math.round(pv * 100)}%`,
-        pv <= R.body.passiveVoiceMaxShare ? "Active voice dominates." : `Prefer active verbs (“we tested” over “was tested”). Flagged: ${hits}`, 0.5);
+        pv <= R.body.passiveVoiceMaxShare ? "Active voice dominates." : `Also a writing check, not an SEO one. Active verbs are usually clearer (“we tested” over “was tested”) — though passive is the right voice when the actor genuinely does not matter. Flagged: ${hits}`, 0.25);
     }
   }
 
@@ -456,9 +607,17 @@ const kwCheck = (text, kw, id, label, weight) => {
 };
 
 /* ---------- Reason-to-click / structure detectors ---------- */
-// A CTA in a snippet is what turns a description into an invitation.
+// A CTA in a snippet is what turns a description into an invitation. Not the
+// only way to do it — see BENEFIT_RE — but one of the clearest.
 const CTA_RE = /\b(?:read|learn|discover|find out|find|see|watch|check out|check|compare|download|install|try|get|start|join|sign up|subscribe|follow|explore|understand|see how|here'?s|what is|what are|how to|why|plus|bonus|guide|explained|revealed|includes?|covers?|before you|avoid|step inside|take a look|we (?:tested|checked|reviewed|tried|ranked|compared)|our (?:test|review|guide|roundup))\b/i;
 const CTA_SAMPLES = ["here's what to know", "we tested the top options"];
+// An explicit promise to the reader. Paired with "here's what to know" this is
+// the difference between a snippet that spends its budget and one that earns a
+// click, so a summary can pass the reason-to-click check on any of the four
+// signals (CTA / figure / question / benefit) rather than needing a CTA verb.
+// Deliberately excludes "what to know" — that is the generic framing this check
+// exists to catch, so it must not count as the benefit it is.
+const BENEFIT_RE = /\b(?:save|saves|saved|saving|cut|cuts|avoid|avoiding|stop|stops|learn|learned|compare|compared|instead|rather than|without|free|cheaper|cheapest|faster|easier|simpler|safer|better|worst|under \d|in \d|within \d|up to \d|worth|why (?:it|they|you|we)|what (?:it|they|you|we)|if you (?:care|need|plan|want)|who should|before you (?:buy|switch|ship))\b/i;
 // Word-level Jaccard overlap — catches an excerpt that rephrases the summary.
 function excerptSharesWith(summary, excerpt) {
   const tok = (s) => new Set(stripMdHtml(s).toLowerCase().match(/[a-z']{3,}/g) || []);
@@ -506,6 +665,33 @@ const hasConclusion = (body) => {
   const tail = blocks.slice(-3).join(" ").slice(0, 900);
   return heads.some((h) => CONCLUSION_RE.test(h)) || CONCLUSION_RE.test(tail);
 };
+// Alt text quality, per image. Google's image guidance treats alt text as the
+// main metadata an image gets — it is how search understands the picture, and
+// how a screen reader reaches it. Returns {total, missing, thin, example}.
+// A two-word alt ("hero image") describes nothing, so it counts as thin rather
+// than present; an empty alt="" is only correct on decorative images, which we
+// cannot tell apart, so it is reported as missing for the author to judge.
+function imageAltIssues(body) {
+  const out = { total: 0, missing: 0, thin: 0, example: "" };
+  const take = (alt, src) => {
+    out.total++;
+    const a = (alt || "").replace(/\s+/g, " ").trim();
+    if (!a) {
+      out.missing++;
+      if (!out.example) out.example = stripMdHtml(src || "").replace(/\s+/g, " ").trim().slice(0, 60);
+      return;
+    }
+    if (a.split(/\s+/).filter(Boolean).length < 3) out.thin++;
+  };
+  for (const m of (body || "").matchAll(/<img\b([^>]*)>/gi)) {
+    const attrs = m[1];
+    const alt = (attrs.match(/\balt\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i) || []);
+    const src = (attrs.match(/\b(?:src|data-src)\s*=\s*("([^"]*)"|'([^']*)')/i) || []);
+    take(alt[2] ?? alt[3] ?? alt[4], (src[2] ?? src[3] ?? "").split("/").pop());
+  }
+  for (const m of (body || "").matchAll(/!\[([^\]]*)\]\(([^)\s]+)/g)) take(m[1], m[2]);
+  return out;
+}
 // Turn an existing section heading into the question a reader would ask —
 // starting points for the FAQ block rather than invented Q&A.
 function questionFromBody(body, i) {
@@ -839,9 +1025,7 @@ function shortenFix(raw, maxWords) {
 function suggestTitle(title, kw) {
   const R = RULES.rules.title;
   let t = title.trim().replace(/\s+/g, " ");
-  const hasKw = hasKeyword(t, kw);
-  if (kw && !hasKw) t = `${kw[0].toUpperCase() + kw.slice(1)}: ${t}`.replace(/^:+/, "");
-  if (!/\d/.test(t) && t) t = t; // don't force numbers; flag only
+  if (kw && !hasKeyword(t, kw)) t = `${kw[0].toUpperCase() + kw.slice(1)}: ${t}`.replace(/^:+/, "");
   if (t.length > R.maxChars) t = smartTrim(t, R.maxChars);
   return t;
 }
@@ -869,10 +1053,20 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
 
   if (title.trim()) {
     const fixed = suggestTitle(title, kw);
+    const tl = title.trim().length;
+    // Credit the card to the check it actually resolves. suggestTitle changes
+    // the string for one of two reasons — it trims an over/under-length title,
+    // or it prepends a missing keyphrase — and a title can be the right length
+    // while still needing the keyphrase, so this cannot just assume title-len.
+    const lenOff = tl < R.title.minChars || tl > R.title.maxChars;
     if (fixed !== title.trim())
-      push("Title rewrite", `Fits ${R.title.minChars}–${R.title.maxChars} chars${kw ? " with the keyphrase up front" : ""}.`, fixed, null, true, "title-len");
-    else if (title.trim().length < R.title.minChars)
-      push("Title idea", "Too short to compete — add a promise or scope.", `${title.trim()} — what you get and who it's for`.slice(0, R.title.maxChars), null, true, "title-len");
+      push("Title rewrite",
+        lenOff
+          ? `Fits ${R.title.minChars}–${R.title.maxChars} chars${kw ? " with the keyphrase up front" : ""}.`
+          : `Right length already — this just puts “${kw}” up front so it survives truncation.`,
+        fixed, null, true, lenOff ? "title-len" : "title-kw");
+    else if (tl < R.title.minChars)
+      push("Title idea", "Short titles are fine — this one just has room to say more. Add the promise or the scope.", `${title.trim()} — what you get and who it's for`.slice(0, R.title.maxChars), null, true, "title-len");
   }
   if (summary.trim() || title.trim()) {
     const base = summary.trim() || `${stripMdHtml(body).split(/\s+/).slice(0, 24).join(" ")}…`;
@@ -881,77 +1075,98 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
     s = smartTrim(s, R.summary.maxChars);
     if (!/[.!?……]$/.test(s) && s.length > 40) s = s.replace(/…$/, "") + ".";
     if (s && s !== summary.trim()) push("Summary rewrite (meta description)", `~${R.summary.minChars}–${R.summary.maxChars} chars, keyphrase + benefit + reason to click.`, s, null, true, "summary-len");
-    // A summary with no reason to click: append a plain CTA rather than
-    // rewriting the author's sentence — the benefit/claim stays theirs.
-    if (summary.trim() && !CTA_RE.test(summary)) {
+    // Only offer to append a CTA when the summary has no reason-to-click signal
+    // at all, and only when there is room left to add one. Auto-appending to a
+    // summary that already carries a figure or a question just wasted characters.
+    const summaryHook = summary.trim() && (CTA_RE.test(summary) || /\d/.test(summary)
+      || /\?/.test(summary) || BENEFIT_RE.test(summary));
+    if (summary.trim() && !summaryHook) {
       const tail = `${summary.trim().replace(/[.\s…]+$/, "")}. ${cap1(CTA_SAMPLES[0])}.`;
-      if (tail.length <= R.summary.maxChars) push("Summary: add a reason to click", "Meta descriptions convert better when they promise something. Append a short CTA.", tail, null, true, "summary-cta");
+      if (tail.length <= R.summary.maxChars) push("Summary: add a reason to click", "No figure, question, benefit or CTA to click on yet. A snippet that promises something specific gets more clicks — this is click-through, not ranking.", tail, null, true, "summary-cta");
     }
   }
   if (excerpt.trim() && summary.trim() && stripMdHtml(excerpt).toLowerCase() === stripMdHtml(summary).toLowerCase())
-    push("Excerpt rewrite (de-duplicate)", "Don't repeat the summary — tease instead.", smartTrim("Inside: " + excerpt.trim().replace(/^inside:\s*/i, ""), R.excerpt.maxChars), null, true, "excerpt-len");
+    push("Excerpt rewrite (de-duplicate)", "Don't repeat the summary — tease instead.", smartTrim("Inside: " + excerpt.trim().replace(/^inside:\s*/i, ""), R.excerpt.maxChars), null, true, "excerpt-dup");
   else if (excerpt.trim() && summary.trim() && excerptSharesWith(summary, excerpt))
     push("Excerpt rewrite (de-duplicate)", "Over 70% of the summary's words — a listing page will show the same sentence twice. Tease a different angle.", smartTrim("Inside: " + excerpt.trim().replace(/^inside:\s*/i, ""), R.excerpt.maxChars), null, true, "excerpt-dup2");
   else if (excerpt.trim() && excerpt.trim().length > R.excerpt.maxChars)
     push("Excerpt trim", "Keep the hook inside the card cutoff.", smartTrim(excerpt.trim(), R.excerpt.maxChars), null, true, "excerpt-len");
 
   const bw = words(body).length;
+  const structureAt = R.body.minWordsForStructure || 300;
+  const structureApplies = bw >= structureAt;
   if (bw > 0) {
     const heads = parseHeadings(body);
     const lvl = RULES.rules.body.sectionLevel || 2, hashes = "#".repeat(lvl), tag = "H" + lvl;
-    // Insertion cards follow detected opportunities (every heading-less section),
-    // NOT the score quota — adding one heading never hides the others.
-    const spots = headingInsertions(body, kw);
-    if (spots.length) {
-      spots.forEach((sp, i) => push(
-        `Suggested heading ${i + 1} (${tag})`,
-        `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — ${sp.reason}, so “${sp.title}” fits. ${sp.draft ? "Working title — rewrite it in your own words" : "Ready to use as-is; tap Insert"}.`,
-        hashes + " " + sp.title,
-        { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" },
-        true, "body-h"
-      ));
-    } else {
-      const h2count = heads.filter((h) => h.level === lvl).length;
-      const h2need = Math.max(RULES.rules.body.minSections, Math.floor(bw / RULES.rules.body.wordsPerSection));
-      if (h2count < h2need) {
-        push("Structure fix", "Add scannable sections — each heading answers one question. (No clear paragraphs detected, so place these by hand.)",
-          [hashes + " What it is", hashes + " Why it matters", hashes + " How to do it", hashes + " Mistakes to avoid", hashes + " FAQ"].join("\n"), null, true, "body-h");
+
+    /* Structural cards only exist once the draft is long enough to have
+       structure. Below that this whole block is skipped: a 180-word piece was
+       being handed heading insertions, link ideas, a list, an FAQ and a
+       conclusion, none of which it had room for. */
+    if (structureApplies) {
+      const secs = heads.filter((h) => h.level === lvl);
+      const need = Math.max(R.body.minSections, Math.floor(bw / R.body.wordsPerSection));
+      const deficit = need - secs.length;
+      // Gate on the check actually failing. Cards used to render off detected
+      // opportunities alone, so a draft that already had enough headings still
+      // collected "Suggested heading" cards.
+      if (deficit > 0) {
+        const spots = headingInsertions(body, kw, deficit);
+        if (spots.length) {
+          spots.forEach((sp, i) => push(
+            `Suggested heading ${i + 1} (${tag})`,
+            `Detected a ${words(sp.para).length}-word section with no heading, starting “${sp.preview}…” — ${sp.reason}, so “${sp.title}” fits. ${sp.draft ? "Working title — rewrite it in your own words" : "Ready to use as-is; tap Insert"}.`,
+            hashes + " " + sp.title,
+            { find: sp.para, replace: hashes + " " + sp.title + "\n\n" + sp.para, verb: "Insert heading" },
+            true, "body-h"
+          ));
+        } else {
+          // Emit the actual shortfall, not a fixed five-heading template.
+          const templates = ["What it is", "Why it matters", "How to do it", "Mistakes to avoid", "FAQ", "What to watch next"];
+          push("Structure fix", `Needs ~${deficit} more ${tag} heading${deficit > 1 ? "s" : ""} to divide ${bw} words evenly — each one should promise a single answer. No clear paragraph boundaries were detected, so place these by hand.`,
+            templates.slice(0, Math.min(deficit, templates.length)).map((t) => hashes + " " + t).join("\n"), null, true, "body-h");
+        }
+      }
+      if (kw && !heads.some(h => hasKeyword(h.text, kw)))
+        push("Heading idea", "One heading that names the topic outright helps both readers and search. Only if it fits the section.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`, null, true, "body-hkw");
+      const { internal, external } = parseLinks(body, R.body.siteDomain);
+      if (!internal.length) {
+        const anchors = linkAnchors(body);
+        if (anchors.length) push("Internal link idea", "These exact phrases in your draft would make strong anchors — link one to a related post in your CMS.",
+          anchors.map((a) => `“${a}”`).join("\n"), null, true, "body-il");
+        else push("Internal link idea", "One link to a related post is enough. It distributes authority and keeps readers on the site.", "Link a phrase to 1–2 related posts (e.g. “see our [beginner's guide](/… )”).", null, true, "body-il");
+      }
+      if (!external.length) {
+        const claims = claimSentences(body);
+        if (claims.length) push("Citation idea", "Claims need backing — pin a source to the exact sentence that makes the claim.",
+          claims.join("\n"), null, true, "body-el");
+        else push("Citation idea", "Ground one checkable claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.", null, true, "body-el");
       }
     }
-    if (kw && !heads.some(h => hasKeyword(h.text, kw)))
-      push("Heading idea", "Give crawlers one keyword-bearing section heading.", `${hashes} ${kw[0]?.toUpperCase() + kw.slice(1) || "Key topic"}: what to know`, null, true, "body-hkw");
-    const { internal, external } = parseLinks(body, R.body.siteDomain);
-    if (!internal.length) {
-      const anchors = linkAnchors(body);
-      if (anchors.length) push("Internal link idea", "These exact phrases in your draft would make strong anchors — link one to a related post in your CMS.",
-        anchors.map((a) => `“${a}”`).join("\n"), null, true, "body-il");
-      else push("Internal link idea", "Keeps readers + authority in your cluster.", "Link a phrase to 1–2 related posts (e.g. “see our [beginner's guide](/… )”).", null, true, "body-il");
-    }
-    if (!external.length) {
-      const claims = claimSentences(body);
-      if (claims.length) push("Citation idea", "Statistics and strong claims need backing — pin a source to the exact sentence that makes the claim.",
-        claims.join("\n"), null, true, "body-el");
-      else push("Citation idea", "Ground one claim with a source.", "Cite one authoritative page: [source name](https://…) near your strongest claim.", null, true, "body-el");
-    }
-    // Scannable structure / completeness cards for long drafts.
-    if (bw >= (R.body.minWordsForList || 400) && countListLines(body) < 3) {
+
+    // Format suggestions: high thresholds, because a list or an FAQ is a choice
+    // about shape, not a fix for a defect.
+    if (bw >= (R.body.minWordsForList || 600) && countListLines(body) < 3) {
       const cand = [...new Set(heads.map((h) => h.text))].filter((h) => !/^(faq|frequently asked)/i.test(h)).slice(0, 2);
-      push("Add a list", `${bw} words with no bullets or table. Pick a section and turn its options, steps or specs into a list — the easiest readability win in the draft.`,
+      push("Add a list", `${bw} words with no bullets or table. If any section is naturally a set — steps, options, specs — turn it into bullets. If nothing here is a set, skip this.`,
         (cand.length ? cand : ["Key points"]).map((h) => `- ${h}: first point\n- second point\n- third point`).join("\n\n"), null, true, "body-list");
     }
-    if (bw >= (R.body.minWordsForFaq || 500) && !heads.some((h) => isFaqHeading(h.text)) && !FAQ_HEAD_RE.test(body)) {
+    if (bw >= (R.body.minWordsForFaq || 1200) && !heads.some((h) => isFaqHeading(h.text)) && !FAQ_HEAD_RE.test(body)) {
       const qs = [questionFromBody(body, 0), questionFromBody(body, 1), questionFromBody(body, 2)].filter(Boolean);
-      push("Add an FAQ", `Past ~${R.body.minWordsForFaq || 500} words a Q&A block is the format most likely to earn a featured snippet. ${qs.length ? "Starting points from your own sections:" : ""}`,
+      push("Add an FAQ", `At ${bw} words there are probably questions readers are already asking. Worth it for scannability and quotability — Google no longer gives general sites FAQ rich results, so this is not a schema play. ${qs.length ? "Starting points from your own sections:" : ""}`,
         (qs.length ? qs : [hashes + " FAQ\n\n**What is it?** One or two sentences.\n\n**Who is it for?** One or two sentences.\n\n**How much does it cost?** One or two sentences."]).join("\n\n"), null, true, "body-faq");
     }
-    if (bw >= (R.body.minWordsForConclusion || 400) && !hasConclusion(body))
-      push("Add a conclusion", "Close with the takeaway: what this means, who should care, what to do next. It's also the natural place to restate the keyphrase.",
+    if (bw >= (R.body.minWordsForConclusion || 800) && !hasConclusion(body))
+      push("Add a conclusion", "Close on the takeaway: what this means, who should care, what to do next. News pieces can skip this if the last line already lands the point.",
         `${hashes} ${CONCLUSION_HEADING}\n\nSum the piece in two or three sentences, name who it's for, and give one concrete next step.`, null, true, "body-concl");
-    if (bw > 0) {
-      const bad = unhelpfulAnchors(body);
-      if (bad.n) push("Descriptive link anchors", `${bad.why.replace(/^\w/, c => c.toUpperCase())} — the anchor text is the signal, so name what the reader gets.`,
-        "[what the reader gets](https://example.com/page)", null, true, "body-anchor");
-    }
+    const bad = unhelpfulAnchors(body);
+    if (bad.n) push("Descriptive link anchors", `${bad.why.replace(/^\w/, c => c.toUpperCase())} — the anchor text is the signal, so name what the reader gets.`,
+      "[what the reader gets](https://example.com/page)", null, true, "body-anchor");
+    const alts = imageAltIssues(body);
+    if (alts.missing) push("Image alt text", `${alts.missing} image${alts.missing > 1 ? "s have" : " has"} no alt text. Search reads alt text to understand the image, and screen readers need it to read the page at all.`,
+      alts.example ? `Describe it: “${alts.example} — what it shows, in a phrase”` : "![what the image shows](image.jpg)", null, true, "body-alt");
+    else if (alts.thin) push("Image alt text", `${alts.thin} alt text${alts.thin > 1 ? "s are" : " is"} too short to describe anything. Say what the image actually shows.`,
+      "![what the image shows](image.jpg)", null, true, "body-alt");
     const longS = rawSentences(body).filter((s) => words(s).length > R.body.maxSentenceWords).slice(0, 2);
     longS.forEach((s) => {
       const fix = shortenFix(s, R.body.maxSentenceWords);
@@ -964,12 +1179,15 @@ function renderSuggestions({ kw, title, summary, excerpt, body }, getCheck, tota
         push("Long sentence — split by hand", `Over ${R.body.maxSentenceWords} words with no safe automatic fix. Try breaking it near “…${mid}…”.`, s, null, false);
       }
     });
+    // Only chase readability when it is genuinely poor. A technical draft sitting
+    // in the 40s is not broken, and rewriting working prose to move a number is
+    // worse than the number.
     const f = flesch(body);
-    if (f !== null && f < RULES.rules.readability.fleschOkay) {
+    if (f !== null && f < RULES.rules.readability.fleschOkay - 10) {
       const dense = densestParagraph(body);
-      if (dense) push("Readability fix", `Flesch ${Math.round(f)} is dense overall — worst section quoted below. Rewrite it with ~15-word sentences, active verbs, and a list.`,
+      if (dense) push("Readability fix", `Flesch ${Math.round(f)} is very dense — this is the worst section. Rewrite it with ~15-word sentences and active verbs. Worth it only if the density is costing you readers; Flesch is not a ranking factor.`,
         "“" + smartTrim(dense.text, 220) + "”", { find: dense.raw, findOnly: true }, false, "body-read");
-      else push("Readability fix", `Flesch ${Math.round(f)} is dense — prefer short sentences and plain verbs. Rewrite one paragraph with ~15-word sentences, active verbs, and a list.`, "Rewrite one paragraph with 15-word sentences, active verbs, and a list.", null, false, "body-read");
+      else push("Readability fix", `Flesch ${Math.round(f)} is very dense — shorter sentences, plainer verbs. Not a ranking factor, so change it only if you think it is hurting the reader.`, "Rewrite one paragraph with 15-word sentences and active verbs.", null, false, "body-read");
     }
   }
 
@@ -1038,7 +1256,7 @@ function renderStats({ kw, title, summary, excerpt, body }, grade) {
   const rows = [
     ["Focus keyphrase", kw ? esc(kw) + ` · ${keywordCount(title + " " + summary + " " + body, kw)}× total` : "<span class='hint'>not set</span>"],
     ["Words", `${bw} · ${sentencesOf(body).length} sentences · ${parseHeadings(body).filter(h => h.level === lvl).length} H${lvl}s`],
-    ["Keyword repetition (body)", dens === null ? "<span class='hint'>—</span>" : `${dens.toFixed(1)}% exact-match ${meter(Math.min(100, dens / 3 * 100), dens <= RULES.rules.body.keywordDensityGoodMax ? "" : dens <= RULES.rules.body.keywordDensityMax ? "warn" : "bad")} (over ~${(RULES.rules.body.keywordDensityGoodMax * 100).toFixed(0)}% = review for stuffing; density itself is not a ranking factor)`],
+    ["Keyword repetition (body)", dens === null ? "<span class='hint'>—</span>" : `${dens.toFixed(1)}% exact-match ${meter(Math.min(100, dens / 3 * 100), dens <= RULES.rules.body.keywordDensityGoodMax ? "" : dens <= RULES.rules.body.keywordDensityMax ? "warn" : "bad")} (over ~${(RULES.rules.body.keywordDensityGoodMax * 100).toFixed(0)}% reads as repetition; there is no “too few” threshold and density is not a ranking factor)`],
     ["Readability", f === null ? "<span class='hint'>need ~30+ words</span>" : `Flesch ${Math.round(f)} ${meter(f, f >= RULES.rules.readability.fleschGood ? "" : f >= RULES.rules.readability.fleschOkay ? "warn" : "bad")} (${f >= RULES.rules.readability.fleschGood ? "good" : f >= RULES.rules.readability.fleschOkay ? "okay" : "dense"})` + (grade !== null && grade !== undefined ? ` · grade ~${Math.max(1, Math.round(grade))} · ${Math.max(1, Math.round(bw / 200))} min read` : "")],
   ];
   els.stats.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
@@ -1695,28 +1913,37 @@ function craftHeading(block) {
 // [{para, title, preview, reason}]. Placement is detected; titles are crafted
 // from the paragraph's own content (see craftHeading) — still meant to be
 // reviewed, but relevant rather than sentence fragments.
+// `limit` is how many headings are actually missing (the check's shortfall), so
+// a draft that needs one heading is offered one and not four.
 // Generic placeholders, used only when no content-based header can be derived —
 // the PLACEMENT is still detected, the words are yours to replace.
 const STATIC_HEADINGS = ["What you need to know", "Why it matters", "How it works", "What to watch next"];
 
-function headingInsertions(body, kw) {
+function headingInsertions(body, kw, limit = 4) {
   const out = [];
+  const cap = Math.max(1, Math.min(limit || 1, 4));
   const re = /[^\n]+(?:\n(?!\n)[^\n]+)*/g; // blocks separated by blank lines
   let m, first = true;
   const isHtmlH = (s) => /^\s*<h[1-6][\s>]/.test(s || "");
+  // A block has to be a real section, not a leftover fragment. The floor starts
+  // at 40 words and scales with the draft so a 45-word aside in a long article
+  // does not get a heading — but it is capped at 120, so a 2,000-word piece made
+  // of ten sections still finds them.
+  const total = words(body).length;
+  const minBlock = Math.max(40, Math.min(120, Math.round(total * 0.1)));
   while ((m = re.exec(body)) !== null) {
     const block = m[0];
     if (first) { first = false; continue; } // intro needs no heading
     const trimmed = block.trim();
     if (!trimmed || /^#{1,6}\s/.test(trimmed) || isHtmlH(trimmed)) continue;
-    if (words(block).length < 40) continue; // a section worth heading is a few sentences, not one
+    if (words(block).length < minBlock) continue; // a section worth heading is a few sentences, not one
     const before = body.slice(0, m.index).trimEnd().split("\n").pop() || "";
     if (/^#{1,6}\s/.test(before) || isHtmlH(before)) continue; // already has a heading
     const crafted = craftHeading(block);
     const plain = stripMdHtml(block).replace(/\s+/g, " ").trim();
     if (crafted) out.push({ para: block, title: crafted.title, reason: crafted.reason, preview: plain.slice(0, 60), draft: !!crafted.draft });
     else out.push({ para: block, title: STATIC_HEADINGS[out.length % STATIC_HEADINGS.length], reason: "no specific header could be derived from this paragraph, so this is a placeholder at the right spot", preview: plain.slice(0, 60), placeholder: true, draft: true });
-    if (out.length >= 4) break;
+    if (out.length >= cap) break;
   }
   return out;
 }
@@ -1955,12 +2182,67 @@ function loadDraft() {
   } catch { /* ignore */ }
 }
 
+/* The sample is deliberately flawed AND deliberately long (~1,400 words). A
+   short sample would no longer reach the thresholds that turn structural checks
+   on, so it would demo nothing — the point is to exercise every card once. */
 const SAMPLE = {
   keyphrase: "budget mechanical keyboards",
   title: "Budget mechanical keyboards worth it",
   summary: "We tested cheap keyboards to see which ones are actually good and worth your money in 2026.",
   excerpt: "We tested cheap keyboards to see which ones are actually good and worth your money in 2026.",
-  body: `I bought a cheap keyboard last year and it was fine for a while. Then some keys started failing. This is a review of what happened.\n\nThere are a lot of options on the market and it is very hard to know which one is the best because every single manufacturer claims that their product was built with the highest quality materials and was designed by experts, which was shown to be questionable in our testing.\n\nYou can buy one here https://example.com/keyboard and read more at https://example.org/switch-guide if you want.`,
+  body: `I bought a cheap keyboard last year and it was fine for a while, and then some of the keys started sticking after about four months which was annoying but not the end of the world until the spacebar stopped registering entirely and I had to go back to the laptop keyboard that came with the machine. This is a review of what happened and what I would buy again, written after living with four different budget mechanical keyboards over the course of eighteen months.
+
+The reason I kept testing is that the market has moved a lot. Two years ago a mechanical keyboard meant a chunky aluminium board with a gasket mount and a pile of novelty keycaps, and today you can get a hot-swappable board with a decent gasket mount for less than the price of a decent pair of headphones, which is why the phrase budget mechanical keyboards went from meaning a compromise to meaning an actual category with real contenders in it.
+
+### What counts as budget now
+
+When I say budget I mean under 60 dollars for the full board, or under 40 if you already own switches and keycaps, and I am including the tax and the shipping because a board that lands at 55 dollars after a customs surprise is not a budget board. Below 30 dollars you are looking at tray-mount plastic boards, which are fine, but they are a different product and I will not pretend otherwise.
+
+### The switches are the whole story
+
+Every cheap keyboard is a case and a plate, and the case is where the money went, so the thing that actually determines how a budget mechanical keyboards board feels is the switch and the mounting. A tray-mount board with a well-lubed linear switch will feel considerably better than a gasket-mount board with a dry, scratchy one, and the number of people who understand this is roughly the number of people who will be disappointed by their first board.
+
+We measured actuation force across the four boards we tested, and the spread was smaller than the marketing suggested, which means switch force is not where the money goes at this price. What separated them was the sound profile and whether the case had any internal foam, and the board with foam was clearly the one we kept reaching for at the end of a long day.
+
+### Sound is the thing you cannot unhear
+
+There is no arguing someone into or out of a sound preference, but it is worth being concrete about what you are choosing. Linear switches are quieter and smoother, tactile switches have a bump you either love or cannot tolerate, and clicky switches are louder than anyone in your office wants them to be. Our advice is to buy a board with linear switches and a case with foam, then live with it for a month.
+
+A board that was described to us as silent produced 74 decibels at 30 centimetres, which is roughly the level of a normal conversation, and the board advertised as loud measured 68. That gap was almost entirely down to foam and plate material rather than the switch, which is exactly what nobody tells you when they tell you to pick clicky switches for a thocky sound.
+
+![](keyboards.jpg)
+
+### The warranty nobody reads
+
+Most boards at this price ship with a one-year warranty, which sounds reassuring until you read the exclusions, and the exclusions are long. Expect to find that the switches are not covered, that the keycaps are not covered, that only the case is covered, and that returning a board outside the original packaging voids it. We read four warranty pages while writing this and every one of them covered the case and nothing else.
+
+This is not a scam, it is how cheap hardware works, but it changes the calculation. If a board fails at month five you are not replacing a component, you are replacing the whole thing, which is why the durability figures later in this piece matter more at this price than at any other. Treat the one-year warranty as the expected replacement date rather than as a safety net.
+
+### Rattles, and why nobody fixes them
+
+The rattle in our second board came from the plate, not the case, and it got worse every month as the plastic took on a slight flex. There is no user-repairable fix for a flexing plate short of replacing the entire board, and the manufacturer's suggested remedy was to contact support, which we did, and the reply was that the warranty had been intended as a best-effort gesture rather than a guarantee, which is not a sentence anyone should have to read.
+
+By contrast the board with internal foam and a thicker plate never rattled, and it is worth saying plainly that the difference between the two was about eight dollars of material. That is the single highest-return eight dollars available in this entire category.
+
+### What we found
+
+The cheapest board we tested lasted four months before the spacebar failed. The second survived a year and developed a rattle in the case that we could not fix. The third was the one we recommend and it is still going eight months in with nothing to report. The fourth was returned, because the firmware tool it needed was a 40 dollar download for a 50 dollar board, and if you have to buy a tool to turn a peripheral on, you have bought the wrong peripheral.
+
+Durability is the part of budget mechanical keyboards that nobody writes about, because failure is not interesting, but it is the only metric that matters at this price. A board that sounds wonderful and dies in four months has cost you more per year of use than a board that sounds fine and lasts five.
+
+### Who should not buy one
+
+If your desk is shared, if you work in an open-plan office, or if you are on a video call most of the day, a mechanical keyboard is probably the wrong purchase. The noise problem is real and it is not a preference you can talk yourself out of at 9am on a Monday. Buy a quiet membrane board and put the budget somewhere else.
+
+There is a much cheaper alternative, and I want to be honest that it is often the correct answer: get a good keycap set for whatever keyboard you already own, and spend the difference on a decent mouse. For a lot of people the keyboard they already have is not the problem.
+
+### How to actually buy one
+
+Buy the case with the most foam you can find, buy linear switches, and buy hot-swap sockets so you can change your mind later without a soldering iron. Ignore the "gasket mount" badge entirely if the plate is thin plastic, because that combination sounds worse than a well-built tray mount. And read the reviews that mention the case rather than the ones that only mention the switches, because the case is the part you cannot change.
+
+The last thing to check is whether the board has a standard layout with a north-facing switch position, because that decides whether third-party keycap sets fit, and getting that wrong means you have bought a keyboard that can only ever wear the keycaps it shipped with, which is a strange thing to have paid for. Our notes on the full lineup are on [click here](https://neowin.net/best-budget-keyboards), and the switch measurements are at https://neowin.net/switch-force-table if you want the raw numbers.
+
+![the winning board, still in daily use](winner.jpg)`,
 };
 
 function reportText() {
